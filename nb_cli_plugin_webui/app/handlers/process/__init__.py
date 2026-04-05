@@ -8,5 +8,6 @@ from .exceptions import (
     LogStorageNotFound,
     ProcessAlreadyExists,
     ProcessAlreadyRunning,
+    ProcessNotRunning,
     LogStorageAlreadyExists,
 )

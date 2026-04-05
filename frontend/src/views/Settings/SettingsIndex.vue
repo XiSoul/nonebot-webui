@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SettingCard from './SettingCard.vue'
 import SearchBar from './SearchBar.vue'
+import ContainerRuntimeCard from './ContainerRuntimeCard.vue'
 import { useSettingsStore } from './client'
 
 const settingsStore = useSettingsStore()
@@ -10,6 +11,8 @@ settingsStore.init()
 
 <template>
   <div class="flex flex-col gap-6">
+    <ContainerRuntimeCard />
+
     <SearchBar />
 
     <div v-if="settingsStore.viewData.length" class="flex flex-col items-center gap-4">

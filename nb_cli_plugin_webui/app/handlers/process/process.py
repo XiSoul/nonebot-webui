@@ -11,7 +11,7 @@ from nb_cli.handlers.process import terminate_process
 from nb_cli_plugin_webui.app.logging import logger as log
 from nb_cli_plugin_webui.app.utils.string_utils import decode_parse
 
-from .exceptions import ProcessAlreadyExists
+from .exceptions import ProcessAlreadyExists, ProcessNotRunning
 from .log import LogStorage as BaseLogStorage
 from .schemas import ProcessLog, ProcessInfo, ProcessPerformance
 
@@ -138,7 +138,12 @@ class Processor:
         await self.log_storage.add_log(log_model)
 
     async def write_stdin(self, data: bytes) -> int:
-        assert self.process and self.process.stdin
+        if (
+            not self.process_is_running
+            or self.process is None
+            or self.process.stdin is None
+        ):
+            raise ProcessNotRunning()
         self.process.stdin.write(data)
         await self.process.stdin.drain()
         return len(data)

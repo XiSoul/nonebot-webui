@@ -3,21 +3,40 @@ import { ProcessService, type ProcessLog } from '@/client/api'
 import { generateURLForWebUI } from '@/client/utils'
 import { useCustomStore, useNoneBotStore, useToastStore } from '@/stores'
 import { useWebSocket } from '@vueuse/core'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const store = useNoneBotStore()
 const customStore = useCustomStore()
 const toast = useToastStore()
 
-const logData = ref<ProcessLog[]>([]),
-  logShowTable = ref<HTMLElement>(),
-  currentBot = ref('')
+const logData = ref<ProcessLog[]>([])
+const logShowTable = ref<HTMLElement>()
+const currentBot = ref("")
+const commandInput = ref("")
+const commandSending = ref(false)
+
+const scrollToBottom = async () => {
+  await nextTick()
+  if (logShowTable.value) {
+    logShowTable.value.scrollTop = logShowTable.value.scrollHeight
+  }
+}
+
+const appendLocalLog = async (message: string) => {
+  logData.value.push({ message })
+  await scrollToBottom()
+}
+
+const subscribeLog = () => {
+  if (!store.selectedBot) return
+  send(JSON.stringify({ type: "log", log_key: store.selectedBot.project_id }))
+  currentBot.value = store.selectedBot.project_id
+}
 
 const getHistoryLogs = async () => {
   if (!store.selectedBot) return
 
-  const getLogCount = 20
-
+  const getLogCount = 200
   const { data, error } = await ProcessService.getLogHistoryV1ProcessLogHistoryGet({
     query: {
       log_count: getLogCount,
@@ -26,43 +45,76 @@ const getHistoryLogs = async () => {
   })
 
   if (error) {
-    toast.add('warning', '获取日志失败, 原因: ' + error.detail, '', 5000)
+    toast.add("warning", `Get history logs failed: ${error.detail}`, "", 5000)
+    return
   }
 
   if (data) {
     logData.value = data.detail
-    const dataLength = data.detail.length
-    if (dataLength > 0) {
-      logData.value.push({
-        message: `已获取近期 ${dataLength} 条日志`
-      })
-    }
+    await scrollToBottom()
   }
 }
 
+const writeToProcess = async (content: string, displayEcho?: string) => {
+  if (!store.selectedBot) return
+  if (!store.selectedBot.is_running) {
+    toast.add("warning", "Bot is not running.", "", 3000)
+    return
+  }
+
+  commandSending.value = true
+  const { error } = await ProcessService.writeToProcessV1ProcessWritePost({
+    query: {
+      project_id: store.selectedBot.project_id,
+      content
+    }
+  })
+  commandSending.value = false
+
+  if (error) {
+    toast.add("error", `Send command failed: ${error.detail}`, "", 5000)
+    return
+  }
+
+  if (displayEcho) await appendLocalLog(displayEcho)
+}
+
+const sendCommand = async () => {
+  const command = commandInput.value.trim()
+  if (!command) return
+
+  await writeToProcess(`${command}\n`, `> ${command}`)
+  commandInput.value = ""
+}
+
+const sendInterrupt = async () => {
+  await writeToProcess("\u0003", "^C")
+}
+
 const { status, data, close, open, send } = useWebSocket<ProcessLog>(
-  generateURLForWebUI('/v1/process/log/ws', true),
+  generateURLForWebUI("/v1/process/log/ws", true),
   {
     immediate: false,
     onConnected(ws) {
-      const token = localStorage.getItem('token') ?? ''
+      const token = localStorage.getItem("token") ?? ""
       ws.send(token)
-
-      if (store.selectedBot) {
-        send(JSON.stringify({ type: 'log', log_key: store.selectedBot?.project_id }))
-        currentBot.value = store.selectedBot?.project_id
-      }
+      subscribeLog()
 
       if (customStore.isDebug) {
-        toast.add('success', 'Debug: WebSocket 连接成功', 'views/Operation/Terminal.vue', 5000)
+        toast.add("success", "Debug: terminal websocket connected.", "TerminalItem.vue", 5000)
       }
     },
     onDisconnected() {
       if (!customStore.isDebug) return
-      toast.add('error', 'Debug: WebSocket 连接断开', 'views/Operation/Terminal.vue', 5000)
+      toast.add("warning", "Debug: terminal websocket disconnected.", "TerminalItem.vue", 5000)
     }
   }
 )
+
+const canWriteCommand = computed(
+  () => Boolean(store.selectedBot?.is_running) && status.value === "OPEN"
+)
+
 onMounted(async () => {
   if (!store.selectedBot) return
   open()
@@ -75,31 +127,39 @@ onUnmounted(() => {
 
 watch(
   () => data.value,
-  (rawData) => {
+  async (rawData) => {
     if (!rawData) return
 
-    const data: ProcessLog = JSON.parse(rawData.toString())
+    const parsedData: ProcessLog = JSON.parse(rawData.toString())
+    logData.value.push(parsedData)
+    await scrollToBottom()
+  }
+)
 
-    logData.value.push(data)
-    if (logShowTable.value) logShowTable.value.scrollTop = logShowTable.value.scrollHeight
+watch(
+  () => status.value,
+  (newStatus) => {
+    if (newStatus === "OPEN") subscribeLog()
   }
 )
 
 watch(
   () => store.selectedBot,
-  (newValue) => {
+  async (newValue) => {
     if (!newValue) return
 
-    if (newValue.project_id === currentBot.value) {
-      if (status.value !== 'OPEN') open()
-      return
+    if (newValue.project_id !== currentBot.value) {
+      currentBot.value = newValue.project_id
+      logData.value = []
+      await getHistoryLogs()
     }
 
-    currentBot.value = newValue.project_id
-    logData.value = []
     if (newValue.is_running) {
-      open()
-      send(JSON.stringify({ type: 'log', log_key: newValue.project_id }))
+      if (status.value !== "OPEN") {
+        open()
+      } else {
+        subscribeLog()
+      }
     } else {
       close()
     }
@@ -109,41 +169,39 @@ watch(
 const retry = () => {
   if (store.selectedBot?.project_id !== currentBot.value) logData.value = []
   logData.value.push({
-    message: 'Retrying...'
+    message: "Retrying websocket connection..."
   })
   open()
 }
 </script>
 
 <template>
-  <div class="w-full p-6 rounded-box bg-base-200 flex flex-col gap-2">
+  <div class="w-full p-6 rounded-box bg-base-200 flex flex-col gap-3">
     <div class="flex justify-between gap-4">
-      <div class="flex items-center gap-4">
-        <span class="font-semibold">实例输出</span>
+      <div class="flex items-center gap-3">
+        <span class="font-semibold">Terminal Output</span>
         <div
           v-if="status === 'OPEN'"
           class="badge badge-sm badge-success font-normal text-base-100"
         >
-          已连接
+          Connected
         </div>
-        <div v-else class="badge badge-sm badge-error font-normal text-base-100">未连接</div>
+        <div v-else class="badge badge-sm badge-error font-normal text-base-100">Disconnected</div>
       </div>
 
-      <div class="flex items-center gap-4">
-        <button
-          :class="{ 'btn btn-sm btn-ghost': true, hidden: status === 'OPEN' }"
-          @click="retry()"
-        >
-          重连
-        </button>
-      </div>
+      <button
+        :class="{ 'btn btn-sm btn-ghost': true, hidden: status === 'OPEN' }"
+        @click="retry()"
+      >
+        Retry
+      </button>
     </div>
 
     <table ref="logShowTable" class="overflow-auto h-96 !flex table table-xs rounded-none">
       <tbody>
         <tr
-          v-for="item in logData"
-          :key="item.message"
+          v-for="(item, index) in logData"
+          :key="`${item.time ?? 'log'}-${index}`"
           :class="{
             'flex font-mono': true,
             'bg-error/50': item.level === 'ERROR',
@@ -154,11 +212,33 @@ const retry = () => {
             {{ item.time }}
           </th>
           <td v-if="item.level" class="flex">{{ item.level }}</td>
-          <td :class="{ flex: true, 'pl-0 text-success': !item.time }">
-            {{ item.message }}
-          </td>
+          <td :class="{ flex: true, 'pl-0 text-success': !item.time }">{{ item.message }}</td>
         </tr>
       </tbody>
     </table>
+
+    <form class="flex flex-col md:flex-row gap-2" @submit.prevent="sendCommand">
+      <input
+        v-model="commandInput"
+        class="input input-sm input-bordered flex-1 font-mono"
+        placeholder="Type command, press Enter to send"
+        :disabled="!canWriteCommand || commandSending"
+      />
+      <button
+        class="btn btn-sm btn-primary text-base-100"
+        type="submit"
+        :disabled="!canWriteCommand || commandSending"
+      >
+        Send
+      </button>
+      <button
+        class="btn btn-sm btn-warning"
+        type="button"
+        :disabled="!canWriteCommand || commandSending"
+        @click="sendInterrupt"
+      >
+        Ctrl+C
+      </button>
+    </form>
   </div>
 </template>

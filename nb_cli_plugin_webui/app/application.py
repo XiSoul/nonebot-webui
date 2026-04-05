@@ -13,6 +13,10 @@ from nb_cli_plugin_webui import get_version
 from .config import Config
 from .logging import logger as log
 from .utils.scheduler import scheduler
+from .utils.container import (
+    apply_container_runtime_config,
+    maybe_auto_select_best_source_preset,
+)
 from .router import router as api_router
 from .handlers.process import ProcessManager
 from .handlers import driver_store_manager, plugin_store_manager, adapter_store_manager
@@ -78,6 +82,8 @@ app.mount("/", app=frontend)
 async def startup_event():
     if "WEBUI_BUILD" in os.environ:
         log.info("Running in docker.")
+        await maybe_auto_select_best_source_preset()
+        apply_container_runtime_config()
 
     log.info("Starting NoneBot CLI WebUI.")
     log.info(f"NoneBot CLI WebUI version: {get_version()}")

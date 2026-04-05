@@ -96,3 +96,56 @@ docker run -it --rm -p 8080:8080 -v ./:/app nonebot/cli-plugin-webui:latest --he
 ## 补充
 
 nb-cli WebUI 目前正处于快速迭代中，欢迎各位提交在使用过程中发现的 BUG 和建议。
+
+### Docker advanced runtime settings
+
+The container supports runtime proxy and mirror settings via environment variables:
+
+- `WEBUI_HTTP_PROXY`, `WEBUI_HTTPS_PROXY`, `WEBUI_ALL_PROXY`, `WEBUI_NO_PROXY`
+- `WEBUI_SOURCE_PRESET` (`official` / `tuna` / `ustc` / `aliyun` / `huawei`)
+- `WEBUI_AUTO_BEST_PRESET=1` (startup benchmark and apply best preset automatically)
+- `WEBUI_AUTO_BEST_PRESET_FORCE=1` (force benchmark even if saved source values already exist)
+- `WEBUI_DEBIAN_MIRROR` / `WEBUI_APT_MIRROR` (or `DEBIAN_MIRROR`, `APT_MIRROR`, `LINUX_MIRROR`)
+- `WEBUI_PIP_INDEX_URL`, `WEBUI_PIP_EXTRA_INDEX_URL`, `WEBUI_PIP_TRUSTED_HOST`
+
+You can also edit these values in WebUI `Settings -> 容器代理与镜像源`.
+Priority: explicit environment variables passed to `docker run` > `WEBUI_SOURCE_PRESET` > values saved in WebUI.
+Auto-best preset is disabled by default.
+When enabled, container startup may take longer because mirror connectivity benchmark is executed first.
+
+WebUI also provides:
+- one-click source presets (Official / TUNA / USTC / Aliyun / Huawei)
+- runtime profile templates (save/apply/delete for scenarios like home/company)
+- preset benchmark (auto speed ranking)
+- apply best preset directly from benchmark result
+- connectivity test for Debian mirror and pip index (quick/deep)
+- auto quick pre-check before saving (can force save on failure)
+- one-click rollback to official source
+
+For Linux hosts, if your proxy runs on host machine, add:
+
+```shell
+--add-host host.docker.internal:host-gateway
+```
+
+Example:
+
+```shell
+docker run -it --rm \
+  -p 8080:8080 \
+  -v ./:/app \
+  -e WEBUI_HTTP_PROXY=http://host.docker.internal:7890 \
+  -e WEBUI_HTTPS_PROXY=http://host.docker.internal:7890 \
+  -e WEBUI_SOURCE_PRESET=tuna \
+  nonebot/cli-plugin-webui:latest
+```
+
+Auto-select best preset on startup:
+
+```shell
+docker run -it --rm \
+  -p 8080:8080 \
+  -v ./:/app \
+  -e WEBUI_AUTO_BEST_PRESET=1 \
+  nonebot/cli-plugin-webui:latest
+```

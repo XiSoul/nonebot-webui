@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 from enum import Enum
 from typing import Any
@@ -45,30 +45,66 @@ class AppConfig(BaseModel):
         default_factory=lambda: (
             str(Path.cwd() / "/projects") if "WEBUI_BUILD" in os.environ else str()
         ),
-        description="基础目录，创建实例将由此开始",
+        description="Base directory used to create/manage bot projects.",
     )
-    host: str = Field(default="localhost", description="主机名")
-    port: str = Field(default="12345", description="端口号")
-    debug: int = Field(default=0, description="是否开启调试模式")
-    enable_api_document: bool = Field(default=False, description="是否开启 API 文档")
+    host: str = Field(default="localhost", description="WebUI bind host.")
+    port: str = Field(default="12345", description="WebUI bind port.")
+    debug: int = Field(default=0, description="Enable debug mode.")
+    enable_api_document: bool = Field(
+        default=False, description="Enable API document endpoint."
+    )
 
-    log_level: LogLevels = Field(default=LogLevels.INFO, description="日志等级")
-    log_is_store: bool = Field(default=False, description="是否存储日志")
+    log_level: LogLevels = Field(default=LogLevels.INFO, description="Log level.")
+    log_is_store: bool = Field(default=False, description="Enable log persistence.")
 
-    secret_key: SecretStr = Field(default=SecretStr(str()), description="验证密钥的密钥")
-    hashed_token: SecretStr = Field(default=SecretStr(str()), description="哈希后的 token")
-    salt: SecretStr = Field(default=SecretStr(str()), description="盐值")
+    secret_key: SecretStr = Field(
+        default=SecretStr(str()), description="JWT signing secret key."
+    )
+    hashed_token: SecretStr = Field(
+        default=SecretStr(str()), description="Hashed login token."
+    )
+    salt: SecretStr = Field(default=SecretStr(str()), description="Token hash salt.")
 
     allowed_origins: list = Field(
         default=["*"],
-        description="限定访问来源",
+        description="CORS allowed origins.",
     )
 
     process_log_destroy_seconds: int = Field(
-        default=5 * 60, description="进程单条日志销毁时间（秒）"
+        default=5 * 60, description="Retention in seconds for process logs."
     )
 
-    extension_store_visible_items: int = Field(default=12, description="扩展商店每页显示数量")
+    extension_store_visible_items: int = Field(
+        default=12, description="Store page size."
+    )
+
+    container_http_proxy: str = Field(
+        default="", description="Container HTTP proxy URL."
+    )
+    container_https_proxy: str = Field(
+        default="", description="Container HTTPS proxy URL."
+    )
+    container_all_proxy: str = Field(
+        default="", description="Container ALL_PROXY URL."
+    )
+    container_no_proxy: str = Field(
+        default="", description="Container NO_PROXY values."
+    )
+    container_debian_mirror: str = Field(
+        default="", description="Container Debian/APT mirror base URL."
+    )
+    container_pip_index_url: str = Field(
+        default="", description="Container pip index-url."
+    )
+    container_pip_extra_index_url: str = Field(
+        default="", description="Container pip extra-index-url."
+    )
+    container_pip_trusted_host: str = Field(
+        default="", description="Container pip trusted-host."
+    )
+    container_runtime_profiles: list = Field(
+        default_factory=list, description="Saved container runtime profiles."
+    )
 
     @property
     def log_level_str(self) -> str:
@@ -216,3 +252,4 @@ async def generate_config():
         hashed_token=SecretStr(hashed_token),
     )
     CONFIG_FILE_PATH.write_text(user_config.to_json(), encoding="utf-8")
+

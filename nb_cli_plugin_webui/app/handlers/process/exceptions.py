@@ -11,6 +11,10 @@ class ProcessAlreadyRunning(BadRequest):
     detail = ErrorCode.PROCESS_ALREADY_RUNNING
 
 
+class ProcessNotRunning(BadRequest):
+    detail = ErrorCode.PROCESS_NOT_RUNNING
+
+
 class ProcessNotFound(NotFound):
     detail = ErrorCode.NOT_FOUND_PROCESS
 
