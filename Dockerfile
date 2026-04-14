@@ -6,11 +6,18 @@ FROM node:20 AS frontend-build
 
 WORKDIR /app
 
-COPY . /app
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml* ./
+COPY frontend/package.json frontend/
 
-RUN corepack enable \
-    && pnpm install --frozen-lockfile \
-    && pnpm -C frontend run build-only
+# Install dependencies
+RUN corepack enable && pnpm install --frozen-lockfile
+
+# Copy source code
+COPY frontend/ frontend/
+
+# Build frontend
+RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
