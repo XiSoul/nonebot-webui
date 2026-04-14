@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import router from '@/router'
+import { clearAuthToken } from '@/client/auth'
 import { useCustomStore, useToastStore } from '@/stores'
 import NotificationItem from '@/components/header/NotificationItem.vue'
-import BotChoose from '@/components/header/BotChoose.vue'
 import StatusItem from '@/components/header/StatusItem.vue'
 import WebUISettings from '@/components/header/WebUISettings.vue'
 
@@ -10,9 +10,9 @@ const store = useCustomStore()
 const toast = useToastStore()
 
 const logout = () => {
-  localStorage.clear()
+  clearAuthToken()
   router.push('/login')
-  toast.add('success', '已登出', '', 5000)
+  toast.add('success', '已退出登录', '', 5000)
 }
 </script>
 
@@ -59,8 +59,6 @@ const logout = () => {
       </button>
 
       <NotificationItem />
-
-      <BotChoose />
 
       <WebUISettings />
       <button class="btn btn-sm btn-ghost btn-square">

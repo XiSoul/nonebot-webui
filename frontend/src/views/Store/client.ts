@@ -12,15 +12,26 @@ import { ref } from 'vue'
 
 const toast = useToastStore()
 
+const getErrorMessage = (error: any) => {
+  if (!error) return '未知错误'
+  const detail = error.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || JSON.stringify(item)).join('; ')
+  }
+  if (detail && typeof detail === 'object') return JSON.stringify(detail)
+  return String(error)
+}
+
 export const useSearchStore = defineStore('storeSearchStore', () => {
-  const searchInput = ref(''),
-    searchTags = ref<nb_cli_plugin_webui__app__models__store__SearchTag[]>([]),
-    storeData = ref<(nb_cli_plugin_webui__app__models__store__Plugin | Adapter | Driver)[]>([]),
-    nowPage = ref(1),
-    totalPage = ref(1),
-    totalItem = ref(0),
-    viewModule = ref<ModuleType>('plugin'),
-    isRequesting = ref(false)
+  const searchInput = ref('')
+  const searchTags = ref<nb_cli_plugin_webui__app__models__store__SearchTag[]>([])
+  const storeData = ref<(nb_cli_plugin_webui__app__models__store__Plugin | Adapter | Driver)[]>([])
+  const nowPage = ref(1)
+  const totalPage = ref(1)
+  const totalItem = ref(0)
+  const viewModule = ref<ModuleType>('plugin')
+  const isRequesting = ref(false)
 
   const clear = () => {
     searchInput.value = ''
@@ -64,7 +75,9 @@ export const useSearchStore = defineStore('storeSearchStore', () => {
     })
 
     if (error) {
-      toast.add('error', `获取商店数据失败, 原因：${error.detail?.toString()}`, '', 5000)
+      toast.add('error', `获取商店数据失败，原因：${getErrorMessage(error)}`, '', 5000)
+      isRequesting.value = false
+      return
     }
 
     if (data) {
@@ -92,6 +105,12 @@ export const useSearchStore = defineStore('storeSearchStore', () => {
   }
 
   const upDataBySearch = async (projectID: string) => {
+    if (!projectID) {
+      toast.add('info', '未选择实例，暂不支持搜索，已切换为商店浏览模式。', '', 3000)
+      await updateData('', true)
+      return
+    }
+
     isRequesting.value = true
     const { data, error } = await StoreService.searchNonebotStoreItemV1StoreNonebotSearchPost({
       query: {
@@ -107,12 +126,13 @@ export const useSearchStore = defineStore('storeSearchStore', () => {
     })
 
     if (error) {
-      toast.add('error', `搜索失败, 原因：${error.detail?.toString()}`, '', 5000)
+      toast.add('error', `搜索失败，原因：${getErrorMessage(error)}`, '', 5000)
+      isRequesting.value = false
+      return
     }
 
     if (data) {
       nowPage.value = 1
-
       storeData.value = data.detail
       totalPage.value = data.total_page
       totalItem.value = data.total_item

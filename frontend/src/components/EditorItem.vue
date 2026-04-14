@@ -28,7 +28,11 @@ onMounted(() => {
 
 watch(
   () => props.modelValue,
-  (value) => editor.setValue(value)
+  (value) => {
+    if (!editor) return
+    if (value === editor.getValue()) return
+    editor.setValue(value)
+  }
 )
 </script>
 

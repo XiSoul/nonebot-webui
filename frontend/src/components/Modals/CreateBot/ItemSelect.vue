@@ -5,33 +5,43 @@ import { limitContentShow } from '@/client/utils'
 import { useCreateBotStore } from '.'
 
 const props = defineProps<{ data: T[]; dataType: ModuleType }>()
-
 const store = useCreateBotStore()
 
-const currentPage = ref(0),
-  maxPage = ref(0),
-  rawData = ref<T[]>([]) as Ref<T[]>,
-  showData = ref<T[]>([]) as Ref<T[]>
+const currentPage = ref(0)
+const maxPage = ref(0)
+const rawData = ref<T[]>([]) as Ref<T[]>
+const showData = ref<T[]>([]) as Ref<T[]>
 
-watch(
-  () => props.data,
-  (value) => {
-    rawData.value = value
-    maxPage.value = Math.ceil(rawData.value.length / 12) - 1
-    updateData(currentPage.value)
-  }
-)
+const getItemName = (data: T) => data.name || data.module_name || '未命名模块'
+const getItemDesc = (data: T) => data.desc || data.project_link || ''
+const getItemHomepage = (data: T) => {
+  const homepage = data.homepage || data.project_link || ''
+  if (!homepage) return ''
+  if (homepage.startsWith('/docs')) return `https://nonebot.dev${homepage}`
+  return homepage
+}
 
 const updateData = (page: number) => {
   showData.value = rawData.value.slice(page * 12, (page + 1) * 12)
 }
 
+watch(
+  () => props.data,
+  (value) => {
+    currentPage.value = 0
+    rawData.value = value ?? []
+    maxPage.value = Math.max(Math.ceil(rawData.value.length / 12) - 1, 0)
+    updateData(currentPage.value)
+  },
+  { immediate: true }
+)
+
 const itemIsExisted = (data: T): number => {
+  const name = getItemName(data)
   if (props.dataType === 'driver') {
-    return store.drivers.findIndex((item) => item.name === data.name)
-  } else {
-    return store.adapters.findIndex((item) => item.name === data.name)
+    return store.drivers.findIndex((item) => (item.name || item.module_name) === name)
   }
+  return store.adapters.findIndex((item) => (item.name || item.module_name) === name)
 }
 
 const updateItem = (data: T) => {
@@ -42,12 +52,13 @@ const updateItem = (data: T) => {
     } else {
       store.adapters.push(data as Adapter)
     }
+    return
+  }
+
+  if (props.dataType === 'driver') {
+    store.drivers.splice(index, 1)
   } else {
-    if (props.dataType === 'driver') {
-      store.drivers.splice(index, 1)
-    } else {
-      store.adapters.splice(index, 1)
-    }
+    store.adapters.splice(index, 1)
   }
 }
 </script>
@@ -82,25 +93,20 @@ const updateItem = (data: T) => {
       >
         <div
           v-for="item in showData"
-          :key="item.name"
+          :key="item.module_name || item.name"
           class="bg-base-100 rounded-lg p-4 flex justify-between"
         >
           <div>
             <div class="text-semibold flex items-center gap-1">
-              <a
-                target="_blank"
-                :href="`
-                ${item.homepage!.startsWith('/docs') ? 'https://nonebot.dev' : ''}
-                ${item.homepage}
-                `"
-              >
-                {{ limitContentShow(item.name!, 10) }}
+              <a v-if="getItemHomepage(item)" target="_blank" :href="getItemHomepage(item)">
+                {{ limitContentShow(getItemName(item), 30) }}
               </a>
+              <span v-else>{{ limitContentShow(getItemName(item), 30) }}</span>
               <div v-if="item.is_official" class="tooltip flex items-center" data-tip="官方认证">
                 <span class="material-symbols-outlined text-green-600"> check_circle </span>
               </div>
             </div>
-            <div class="text-sm">{{ limitContentShow(item.desc!, 20) }}</div>
+            <div class="text-sm">{{ limitContentShow(getItemDesc(item), 40) }}</div>
           </div>
           <div class="flex items-center justify-center">
             <input
@@ -123,12 +129,12 @@ const updateItem = (data: T) => {
       <div class="flex items-center flex-wrap gap-2">
         <div
           v-for="item in (store as any)[`${props.dataType.toLowerCase()}s`]"
-          :key="item.name"
+          :key="item.module_name || item.name"
           role="button"
           class="badge badge-lg !bg-base-100"
           @click="updateItem(item)"
         >
-          {{ item.name }}
+          {{ item.name || item.module_name }}
         </div>
       </div>
     </div>

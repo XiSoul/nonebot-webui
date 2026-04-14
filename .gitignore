@@ -235,6 +235,7 @@ web_modules/
 
 # Output of 'npm pack'
 *.tgz
+*.tar.gz
 
 # Yarn Integrity file
 .yarn-integrity
@@ -257,6 +258,11 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+dist_chunks/
+
+# Local deployment / hotfix artifacts
+temp_filemanager_remote*.js
+deploy_nonebot_*.sh
 
 # Gatsby files
 .cache/

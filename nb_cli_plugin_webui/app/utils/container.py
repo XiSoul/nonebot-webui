@@ -21,6 +21,8 @@ _PROXY_ENV_KEYS = {
     "NO_PROXY": ("WEBUI_NO_PROXY",),
 }
 
+_SOCKS_PROXY_SCHEMES = ("socks4://", "socks4a://", "socks5://", "socks5h://")
+
 _DEBIAN_MIRROR_KEYS = (
     "WEBUI_DEBIAN_MIRROR",
     "WEBUI_APT_MIRROR",
@@ -110,6 +112,7 @@ _SOURCE_PRESET_ALIASES = {
 
 @dataclass
 class ContainerRuntimeSettings:
+    proxy_url: str = ""
     http_proxy: str = ""
     https_proxy: str = ""
     all_proxy: str = ""
@@ -121,16 +124,52 @@ class ContainerRuntimeSettings:
 
     @classmethod
     def from_config(cls) -> "ContainerRuntimeSettings":
+        proxy_url = _normalize_text(getattr(Config, "container_proxy_url", ""))
+        http_proxy = _normalize_text(Config.container_http_proxy)
+        https_proxy = _normalize_text(Config.container_https_proxy)
+        all_proxy = _normalize_text(Config.container_all_proxy)
         return cls(
-            http_proxy=_normalize_text(Config.container_http_proxy),
-            https_proxy=_normalize_text(Config.container_https_proxy),
-            all_proxy=_normalize_text(Config.container_all_proxy),
+            proxy_url=proxy_url or _derive_proxy_url(http_proxy, https_proxy, all_proxy),
+            http_proxy=http_proxy,
+            https_proxy=https_proxy,
+            all_proxy=all_proxy,
             no_proxy=_normalize_text(Config.container_no_proxy),
             debian_mirror=_normalize_text(Config.container_debian_mirror),
             pip_index_url=_normalize_text(Config.container_pip_index_url),
             pip_extra_index_url=_normalize_text(Config.container_pip_extra_index_url),
             pip_trusted_host=_normalize_text(Config.container_pip_trusted_host),
         )
+
+    def resolved_proxy_url(self) -> str:
+        proxy_url = _normalize_text(self.proxy_url)
+        if proxy_url:
+            return proxy_url
+        return _derive_proxy_url(self.http_proxy, self.https_proxy, self.all_proxy)
+
+    def resolved_proxy_env(self) -> Dict[str, str]:
+        proxy_url = self.resolved_proxy_url()
+        no_proxy = _normalize_text(self.no_proxy)
+        if proxy_url:
+            mapping = {
+                "HTTP_PROXY": proxy_url,
+                "HTTPS_PROXY": proxy_url,
+            }
+            if _is_socks_proxy_url(proxy_url):
+                mapping["ALL_PROXY"] = proxy_url
+            if no_proxy:
+                mapping["NO_PROXY"] = no_proxy
+            return mapping
+
+        mapping: Dict[str, str] = {}
+        if http_proxy := _normalize_text(self.http_proxy):
+            mapping["HTTP_PROXY"] = http_proxy
+        if https_proxy := _normalize_text(self.https_proxy):
+            mapping["HTTPS_PROXY"] = https_proxy
+        if all_proxy := _normalize_text(self.all_proxy):
+            mapping["ALL_PROXY"] = all_proxy
+        if no_proxy:
+            mapping["NO_PROXY"] = no_proxy
+        return mapping
 
 
 def is_docker_runtime() -> bool:
@@ -166,6 +205,20 @@ def get_effective_container_settings() -> ContainerRuntimeSettings:
     )
 
     return ContainerRuntimeSettings(
+        proxy_url=_pick_env(
+            (
+                *_PROXY_ENV_KEYS["HTTP_PROXY"],
+                *_PROXY_ENV_KEYS["HTTPS_PROXY"],
+                *_PROXY_ENV_KEYS["ALL_PROXY"],
+                "HTTP_PROXY",
+                "http_proxy",
+                "HTTPS_PROXY",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+            )
+        )
+        or config_settings.resolved_proxy_url(),
         http_proxy=_pick_env(
             (*_PROXY_ENV_KEYS["HTTP_PROXY"], "HTTP_PROXY", "http_proxy")
         )
@@ -202,6 +255,20 @@ def get_effective_container_settings() -> ContainerRuntimeSettings:
 
 def _normalize_text(value: Optional[str]) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _is_socks_proxy_url(value: str) -> bool:
+    normalized = _normalize_text(value).lower()
+    return normalized.startswith(_SOCKS_PROXY_SCHEMES)
+
+
+def _derive_proxy_url(http_proxy: str, https_proxy: str, all_proxy: str) -> str:
+    normalized_http = _normalize_text(http_proxy)
+    normalized_https = _normalize_text(https_proxy)
+    normalized_all = _normalize_text(all_proxy)
+    if normalized_http and normalized_https and normalized_http == normalized_https:
+        return normalized_http
+    return normalized_all or normalized_http or normalized_https
 
 
 def _pick_env(keys: Iterable[str]) -> Optional[str]:
@@ -263,18 +330,17 @@ def _unset_env(name: str) -> None:
 
 def _apply_proxy_env(settings: ContainerRuntimeSettings) -> Dict[str, str]:
     result: Dict[str, str] = {}
-    mapping = {
-        "HTTP_PROXY": settings.http_proxy,
-        "HTTPS_PROXY": settings.https_proxy,
-        "ALL_PROXY": settings.all_proxy,
-        "NO_PROXY": settings.no_proxy,
-    }
+    mapping = settings.resolved_proxy_env()
     for env_name, value in mapping.items():
         value = _normalize_text(value)
         if value:
             _set_env(env_name, value)
             result[env_name] = value
         else:
+            _unset_env(env_name)
+
+    for env_name in _PROXY_ENV_KEYS:
+        if env_name not in mapping:
             _unset_env(env_name)
 
     if result:
@@ -427,6 +493,13 @@ def _apply_pip_source(settings: ContainerRuntimeSettings) -> None:
 
 
 def _build_proxy_mapping(settings: ContainerRuntimeSettings) -> Optional[Dict[str, str]]:
+    proxy_url = settings.resolved_proxy_url()
+    if proxy_url:
+        return {
+            "http://": proxy_url,
+            "https://": proxy_url,
+        }
+
     http_proxy = _normalize_text(settings.http_proxy)
     https_proxy = _normalize_text(settings.https_proxy)
     all_proxy = _normalize_text(settings.all_proxy)
@@ -465,18 +538,17 @@ def _build_connectivity_targets(
 
 def _build_runtime_env(settings: ContainerRuntimeSettings) -> Dict[str, str]:
     env = os.environ.copy()
-    mapping = {
-        "HTTP_PROXY": settings.http_proxy,
-        "HTTPS_PROXY": settings.https_proxy,
-        "ALL_PROXY": settings.all_proxy,
-        "NO_PROXY": settings.no_proxy,
-    }
+    mapping = settings.resolved_proxy_env()
     for key, value in mapping.items():
         value = _normalize_text(value)
         if value:
             env[key] = value
             env[key.lower()] = value
         else:
+            env.pop(key, None)
+            env.pop(key.lower(), None)
+    for key in _PROXY_ENV_KEYS:
+        if key not in mapping:
             env.pop(key, None)
             env.pop(key.lower(), None)
     return env
@@ -601,10 +673,11 @@ async def _run_deep_apt_update(settings: ContainerRuntimeSettings) -> Dict[str, 
         "update",
     ]
 
-    if settings.http_proxy:
-        cmd.extend(["-o", f'Acquire::http::Proxy={settings.http_proxy}'])
-    if settings.https_proxy:
-        cmd.extend(["-o", f'Acquire::https::Proxy={settings.https_proxy}'])
+    proxy_env = settings.resolved_proxy_env()
+    if http_proxy := proxy_env.get("HTTP_PROXY"):
+        cmd.extend(["-o", f"Acquire::http::Proxy={http_proxy}"])
+    if https_proxy := proxy_env.get("HTTPS_PROXY"):
+        cmd.extend(["-o", f"Acquire::https::Proxy={https_proxy}"])
 
     start = time.perf_counter()
     try:
@@ -744,6 +817,7 @@ async def benchmark_container_source_presets(
 
     for preset in _SOURCE_PRESETS:
         settings = ContainerRuntimeSettings(
+            proxy_url=proxy_settings.proxy_url,
             http_proxy=proxy_settings.http_proxy,
             https_proxy=proxy_settings.https_proxy,
             all_proxy=proxy_settings.all_proxy,
@@ -849,6 +923,7 @@ async def maybe_auto_select_best_source_preset() -> None:
 
     effective = get_effective_container_settings()
     proxy_settings = ContainerRuntimeSettings(
+        proxy_url=effective.proxy_url,
         http_proxy=effective.http_proxy,
         https_proxy=effective.https_proxy,
         all_proxy=effective.all_proxy,

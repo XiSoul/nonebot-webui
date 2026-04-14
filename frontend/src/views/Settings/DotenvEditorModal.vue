@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ProjectService } from '@/client/api'
+import { getErrorMessage } from '@/client/utils'
 import EditorItem from '@/components/EditorItem.vue'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import { editor as monacoEditor } from 'monaco-editor/esm/vs/editor/editor.api.js'
@@ -49,7 +50,7 @@ const getDotenvFile = async () => {
 
   if (error) {
     dotenvEditorModal.value?.close()
-    toast.add('error', `获取 dotenv 文件失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `获取 dotenv 文件失败, 原因：${getErrorMessage(error)}`, '', 5000)
   }
 
   if (data) {
@@ -74,7 +75,7 @@ const updateDotenvFile = async () => {
   })
 
   if (error) {
-    toast.add('error', `更新文件失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `更新文件失败, 原因：${getErrorMessage(error)}`, '', 5000)
   }
 
   if (!error) {

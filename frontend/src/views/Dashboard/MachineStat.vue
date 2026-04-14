@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { generateURLForWebUI } from '@/client/utils'
+import { getAuthToken } from '@/client/auth'
 import ChartItem from '@/components/ChartItem.vue'
 import { useWebSocket } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -36,7 +37,7 @@ const { data, close, open, send } = useWebSocket<StatusInfo>(
   {
     immediate: false,
     onConnected(ws) {
-      const token = localStorage.getItem('token') ?? ''
+      const token = getAuthToken()
       ws.send(token)
 
       if (nonebotStore.selectedBot) {

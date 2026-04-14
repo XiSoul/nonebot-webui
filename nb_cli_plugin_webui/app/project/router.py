@@ -5,6 +5,7 @@ from fastapi import Depends, APIRouter
 
 from nb_cli_plugin_webui.app.logging import logger as log
 from nb_cli_plugin_webui.app.handlers import NoneBotProjectManager
+from nb_cli_plugin_webui.app.handlers.process import ProcessManager, LogStorageFather
 from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProjectMeta
 
 from .exceptions import ProjectDeleteFailed
@@ -63,6 +64,21 @@ async def delete_project(
     - 删除 NoneBot 实例
     """
     data = project.read()
+    process = ProcessManager.get_process(data.project_id)
+    if process and process.process_is_running:
+        try:
+            await process.stop()
+        except Exception as err:
+            log.warning(f"Stop project process before delete failed: {err}")
+    try:
+        ProcessManager.remove_process(data.project_id)
+    except Exception:
+        pass
+    try:
+        LogStorageFather.remove_storage(data.project_id)
+    except Exception:
+        pass
+
     if delete_fully:
         try:
             shutil.rmtree(data.project_dir)

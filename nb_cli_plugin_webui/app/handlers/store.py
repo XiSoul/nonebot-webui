@@ -27,6 +27,13 @@ from nb_cli_plugin_webui.app.utils.list_utils import safe_list_get, safe_list_re
 _T = TypeVar("_T", Plugin, Adapter, Driver)
 VISIBLE_ITEMS = Config.extension_store_visible_items
 
+
+def _wrap_github_proxy(url: str) -> str:
+    base_url = str(getattr(Config, "github_proxy_base_url", "")).strip().rstrip("/")
+    if not base_url:
+        return url
+    return f"{base_url}/{url}"
+
 if TYPE_CHECKING:
 
     @overload
@@ -76,9 +83,8 @@ else:
             f"https://cdn.jsdelivr.net/gh/nonebot/registry@results/{module_name}.json",
             f"https://cdn.staticaly.io/gh/nonebot/registry@results/{module_name}.json",
             f"https://jsd.cdn.zzko.cn/gh/nonebot/registry@results/{module_name}.json",
-            (
-                "https://ghproxy.com/https://raw.githubusercontent.com/"
-                + f"nonebot/registry/results/{module_name}.json"
+            _wrap_github_proxy(
+                f"https://raw.githubusercontent.com/nonebot/registry/results/{module_name}.json"
             ),
         ]
 

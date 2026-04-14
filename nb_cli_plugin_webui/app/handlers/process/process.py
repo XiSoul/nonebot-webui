@@ -1,6 +1,7 @@
 import os
 import asyncio
 import subprocess
+import signal
 from pathlib import Path
 from typing import Dict, Union, Optional, AsyncIterator
 
@@ -9,6 +10,7 @@ from nb_cli.consts import WINDOWS
 from nb_cli.handlers.process import terminate_process
 
 from nb_cli_plugin_webui.app.logging import logger as log
+from nb_cli_plugin_webui.app.utils.global_log import append_instance_log
 from nb_cli_plugin_webui.app.utils.string_utils import decode_parse
 
 from .exceptions import ProcessAlreadyExists, ProcessNotRunning
@@ -17,7 +19,18 @@ from .schemas import ProcessLog, ProcessInfo, ProcessPerformance
 
 
 class LogStorage(BaseLogStorage[ProcessLog]):
-    pass
+    max_logs = 2000
+
+    async def add_log(self, log: ProcessLog) -> int:
+        log_seq = len(self.logs) + 1
+        self.logs[log_seq] = log
+
+        while len(self.logs) > self.max_logs:
+            oldest_seq = next(iter(self.logs))
+            self.logs.pop(oldest_seq, None)
+
+        await self._notify_listeners(log)
+        return log_seq
 
 
 class Processor:
@@ -30,15 +43,45 @@ class Processor:
         cwd: Path,
         env: Optional[Dict[str, str]] = None,
         log_destroy_seconds: int,
+        project_id: str = "",
+        project_name: str = "",
     ) -> None:
         self.args = args
         self.cwd = cwd
         self.env = env
         self.log_storage = LogStorage(log_destroy_seconds)
+        self.project_id = project_id
+        self.project_name = project_name
 
         self.process_event = asyncio.Event()
         self.output_task = None
         self.error_task = None
+
+    def _repair_project_executable(self) -> None:
+        if WINDOWS or not self.args:
+            return
+
+        try:
+            executable = Path(os.fspath(self.args[0]))
+        except TypeError:
+            return
+
+        if not executable.is_absolute():
+            executable = (self.cwd / executable).resolve()
+
+        try:
+            executable.relative_to(self.cwd.resolve())
+        except ValueError:
+            return
+
+        if not executable.is_file() or os.access(str(executable), os.X_OK):
+            return
+
+        try:
+            executable.chmod(executable.stat().st_mode | 0o111)
+            log.warning(f"Executable permission repaired for {executable} before project start.")
+        except Exception:
+            pass
 
     async def _find_duplicate_process(self) -> AsyncIterator[int]:
         for process in psutil.process_iter():
@@ -79,6 +122,13 @@ class Processor:
 
                 log_model = ProcessLog(message=output)
                 await self.log_storage.add_log(log_model)
+                if self.project_id:
+                    append_instance_log(
+                        project_id=self.project_id,
+                        project_name=self.project_name,
+                        message=output,
+                        source="runtime",
+                    )
 
         if self.process.stdout:
             self.output_task = asyncio.create_task(read_output())
@@ -118,8 +168,17 @@ class Processor:
         async for pid in self._find_duplicate_process():
             log.warning(f"Possible process {pid=} found, terminated.")
 
+        self._repair_project_executable()
         await self._process_executer()
         self.process_is_running = True
+        if self.project_id:
+            append_instance_log(
+                project_id=self.project_id,
+                project_name=self.project_name,
+                message="实例进程已启动。",
+                source="process-manager",
+                level="INFO",
+            )
 
     async def stop(self):
         if self.process:
@@ -127,6 +186,14 @@ class Processor:
             await terminate_process(self.process)
             self.process_is_running = False
             log.info(f"Process {pid=} terminated.")
+            if self.project_id:
+                append_instance_log(
+                    project_id=self.project_id,
+                    project_name=self.project_name,
+                    message=f"实例进程已停止。pid={pid}",
+                    source="process-manager",
+                    level="WARNING",
+                )
 
         if self.output_task:
             self.output_task.cancel()
@@ -136,6 +203,14 @@ class Processor:
 
         log_model = ProcessLog(message="Process finished.")
         await self.log_storage.add_log(log_model)
+        if self.project_id:
+            append_instance_log(
+                project_id=self.project_id,
+                project_name=self.project_name,
+                message="实例进程输出结束。",
+                source="process-manager",
+                level="INFO",
+            )
 
     async def write_stdin(self, data: bytes) -> int:
         if (
@@ -147,6 +222,26 @@ class Processor:
         self.process.stdin.write(data)
         await self.process.stdin.drain()
         return len(data)
+
+    async def interrupt(self) -> None:
+        if not self.process_is_running or self.process is None:
+            raise ProcessNotRunning()
+
+        if WINDOWS:
+            self.process.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
+        else:
+            self.process.send_signal(signal.SIGINT)
+
+        log_model = ProcessLog(message="Sent interrupt signal.")
+        await self.log_storage.add_log(log_model)
+        if self.project_id:
+            append_instance_log(
+                project_id=self.project_id,
+                project_name=self.project_name,
+                message="已向实例发送中断信号。",
+                source="process-manager",
+                level="WARNING",
+            )
 
 
 class ProcessManager:

@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useAddBotStore } from '.'
 import { ProjectService, type ProcessLog } from '@/client/api'
+import { getAuthToken } from '@/client/auth'
 import { useWebSocket } from '@vueuse/core'
 import { generateURLForWebUI } from '@/client/utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
@@ -19,6 +20,7 @@ const logContainer = ref<HTMLElement>()
 const logData = ref<ProcessLog[]>([])
 
 const getLogData = computed(() => [...logData.value].reverse())
+const normalizeProjectName = (value: string) => value.trim().replace(/ /g, '-').toLowerCase()
 
 const addBot = async () => {
   if (isFailed.value) {
@@ -29,6 +31,16 @@ const addBot = async () => {
     logData.value.push({
       message: 'Retrying...'
     })
+  }
+
+  const normalizedProjectName = normalizeProjectName(store.projectName)
+  const duplicateBot = Object.values(nonebotStore.bots).find(
+    (bot) => normalizeProjectName(bot.project_name) === normalizedProjectName
+  )
+  if (duplicateBot) {
+    store.warningMessage = `实例名称 "${store.projectName}" 已存在，请更换后再导入`
+    isFailed.value = true
+    return
   }
 
   const { data, error } = await ProjectService.addProjectV1ProjectAddPost({
@@ -63,7 +75,7 @@ const { status, data, close, open } = useWebSocket<ProcessLog>(
   {
     immediate: false,
     onConnected(ws) {
-      const token = localStorage.getItem('token') ?? ''
+      const token = getAuthToken()
       ws.send(token)
       ws.send(JSON.stringify({ type: 'log', log_key: logKey.value }))
     }

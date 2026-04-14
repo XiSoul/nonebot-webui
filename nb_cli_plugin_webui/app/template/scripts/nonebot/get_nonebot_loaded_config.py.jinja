@@ -2,4 +2,5 @@
 
 {{ get_nonebot_driver() }}
 
-print(f"nonebot_loaded_config:{driver.config.model_dump_json()}")
+print(f"nonebot_loaded_config:{_model_dump_json(driver.config)}")
+

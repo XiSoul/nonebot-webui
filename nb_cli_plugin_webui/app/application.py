@@ -9,6 +9,11 @@ from fastapi.staticfiles import StaticFiles as BaseStaticFiles
 from starlette.exceptions import HTTPException as StarlettleHTTPException
 
 from nb_cli_plugin_webui import get_version
+from nb_cli_plugin_webui.app.backup.service import configure_backup_scheduler
+from nb_cli_plugin_webui.app.utils.global_log import (
+    LOG_CLEANUP_JOB_ID,
+    cleanup_old_logs,
+)
 
 from .config import Config
 from .logging import logger as log
@@ -74,6 +79,7 @@ api.include_router(api_router, prefix="/v1")
 
 
 app = FastAPI(openapi_url="")
+app.include_router(api_router, prefix="/v1")
 app.mount("/api", app=api)
 app.mount("/", app=frontend)
 
@@ -91,6 +97,21 @@ async def startup_event():
         log.debug("Debug mode is enabled.")
 
     scheduler.start()
+    configure_backup_scheduler()
+    cleanup_old_logs()
+    try:
+        scheduler.remove_job(LOG_CLEANUP_JOB_ID)
+    except Exception:
+        pass
+    scheduler.add_job(
+        cleanup_old_logs,
+        "interval",
+        hours=24,
+        id=LOG_CLEANUP_JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
 
     await plugin_store_manager.load_item()
     await adapter_store_manager.load_item()
@@ -109,7 +130,7 @@ async def shutdown_event():
 
 
 @app.exception_handler(404)
-async def not_found():
+async def not_found(request, exc):
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
         content={"detail": [{"msg": "Not Found"}]},

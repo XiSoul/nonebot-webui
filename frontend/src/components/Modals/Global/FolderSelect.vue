@@ -2,12 +2,14 @@
 import { FileService, type FileInfo } from '@/client/api'
 import { covertTimestampToDateString, limitContentShow } from '@/client/utils'
 import { ref } from 'vue'
+import { useToastStore } from '@/stores'
 
 const emit = defineEmits<{
   selectFolder: [value: string]
 }>()
 
 const folderSelectModal = ref<HTMLDialogElement>()
+const toast = useToastStore()
 
 defineExpose({
   openModal: async () => {
@@ -25,14 +27,32 @@ const newFolderModal = ref<HTMLDialogElement>()
 const fileList = ref<FileInfo[]>([]),
   newFolderName = ref(''),
   currentPath = ref(''),
-  selectedFolder = ref('')
+  selectedFolder = ref(''),
+  isCreatingFolder = ref(false)
+
+const getErrorMessage = (error: any): string => {
+  if (!error) return '未知错误'
+  const detail = error.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || JSON.stringify(item)).join('; ')
+  }
+  if (detail && typeof detail === 'object') return JSON.stringify(detail)
+  return String(error)
+}
 
 const getFileList = async (path: string) => {
-  const { data } = await FileService.getFileListV1FileListGet({
+  const { data, error } = await FileService.getFileListV1FileListGet({
     query: {
       path: path
     }
   })
+
+  if (error) {
+    toast.add('error', `读取目录失败：${getErrorMessage(error)}`, '', 5000)
+    fileList.value = []
+    return
+  }
 
   if (data) {
     fileList.value = data.detail
@@ -40,27 +60,60 @@ const getFileList = async (path: string) => {
 }
 
 const createFolder = async (folderName: string, path: string) => {
-  const { data } = await FileService.createFileV1FileCreatePost({
+  isCreatingFolder.value = true
+  const name = folderName.trim()
+  if (!name) {
+    isCreatingFolder.value = false
+    return
+  }
+
+  const { data, error } = await FileService.createFileV1FileCreatePost({
     body: {
-      name: folderName,
+      name,
       path: path,
       is_dir: true
     }
   })
 
+  if (error) {
+    toast.add('error', `新建文件夹失败：${getErrorMessage(error)}`, '', 5000)
+    isCreatingFolder.value = false
+    return
+  }
+
   if (data) {
     fileList.value = data.detail
+    if (currentPath.value) {
+      selectedFolder.value = `${currentPath.value}/${name}`
+    } else {
+      selectedFolder.value = name
+    }
     newFolderName.value = ''
     newFolderModal.value?.close()
   }
+  isCreatingFolder.value = false
 }
 
 const deleteFolder = async (path: string) => {
-  const { data } = await FileService.deleteFileV1FileDeleteDelete({
+  if (!path) return
+
+  const confirmed = window.confirm(`确定彻底删除目录 "${path}" 吗？`)
+  if (!confirmed) return
+
+  const { data, error } = await FileService.deleteFileV1FileDeleteDelete({
     query: {
       path: path
     }
   })
+
+  if (error) {
+    toast.add('error', `删除文件夹失败：${getErrorMessage(error)}`, '', 5000)
+    return
+  }
+
+  if (selectedFolder.value === path) {
+    selectedFolder.value = ''
+  }
 
   if (data) {
     fileList.value = data.detail
@@ -140,18 +193,12 @@ const selectFolder = (path: string, isFolder: boolean) => {
                 </td>
                 <td class="whitespace-nowrap">{{ file.is_dir ? '文件夹' : '文件' }}</td>
                 <td class="flex items-center whitespace-nowrap">
-                  <label class="swap">
-                    <input type="checkbox" />
-
-                    <span class="swap-on fill-current material-symbols-outlined"> check </span>
-
-                    <span
-                      class="swap-off fill-current material-symbols-outlined"
-                      @click="deleteFolder(selectedFolder)"
-                    >
-                      delete
-                    </span>
-                  </label>
+                  <button
+                    class="btn btn-ghost btn-xs text-error"
+                    @click.stop="deleteFolder(file.path)"
+                  >
+                    <span class="fill-current material-symbols-outlined">delete</span>
+                  </button>
                 </td>
               </tr>
               <tr v-if="!fileList.length">
@@ -172,7 +219,7 @@ const selectFolder = (path: string, isFolder: boolean) => {
       <div class="flex justify-between flex-col md:flex-row gap-4 md:gap-0">
         <div class="flex gap-4 justify-between md:justify-start">
           <button class="btn btn-sm" @click="updateFileList(currentPath, true)">刷新</button>
-          <button class="btn btn-sm" @click="newFolderModal?.showModal">新建文件夹</button>
+          <button class="btn btn-sm" @click="newFolderModal?.showModal()">新建文件夹</button>
           <button class="btn btn-sm" @click="selectFolder(currentPath, true)">选中当前目录</button>
         </div>
 
@@ -208,10 +255,13 @@ const selectFolder = (path: string, isFolder: boolean) => {
           取消
         </button>
         <button
-          :class="{ 'btn btn-sm btn-primary text-base-100': true, 'btn-disabled': !newFolderName }"
+          :class="{
+            'btn btn-sm btn-primary text-base-100': true,
+            'btn-disabled': !newFolderName.trim() || isCreatingFolder
+          }"
           @click="createFolder(newFolderName, currentPath)"
         >
-          确认
+          {{ isCreatingFolder ? '创建中...' : '确认' }}
         </button>
       </div>
     </div>

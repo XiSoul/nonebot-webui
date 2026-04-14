@@ -35,6 +35,9 @@ import type {
   StopProcessV1ProcessStopPostData,
   StopProcessV1ProcessStopPostError,
   StopProcessV1ProcessStopPostResponse,
+  InterruptProcessV1ProcessInterruptPostData,
+  InterruptProcessV1ProcessInterruptPostError,
+  InterruptProcessV1ProcessInterruptPostResponse,
   WriteToProcessV1ProcessWritePostData,
   WriteToProcessV1ProcessWritePostError,
   WriteToProcessV1ProcessWritePostResponse,
@@ -292,6 +295,23 @@ export class ProcessService {
     >({
       ...options,
       url: '/v1/process/stop'
+    })
+  }
+
+  /**
+   * Interrupt Process
+   * - 向 NoneBot 实例进程发送中断信号
+   */
+  public static interruptProcessV1ProcessInterruptPost<ThrowOnError extends boolean = false>(
+    options: Options<InterruptProcessV1ProcessInterruptPostData, ThrowOnError>
+  ) {
+    return (options?.client ?? client).post<
+      InterruptProcessV1ProcessInterruptPostResponse,
+      InterruptProcessV1ProcessInterruptPostError,
+      ThrowOnError
+    >({
+      ...options,
+      url: '/v1/process/interrupt'
     })
   }
 

@@ -1,7 +1,7 @@
 from typing import Dict, List, Callable, Optional, Awaitable
 
 from fastapi.websockets import WebSocketState
-from fastapi import Depends, APIRouter, WebSocket
+from fastapi import Depends, APIRouter, WebSocket, HTTPException, status
 
 from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.logging import logger
@@ -39,7 +39,16 @@ async def run_process(
     if not project_meta.drivers:
         raise DriverNotFound()
 
-    await run_nonebot_project(project)
+    try:
+        await run_nonebot_project(project)
+    except HTTPException:
+        raise
+    except Exception as err:
+        logger.exception(f"Failed to start project {project_meta.project_id}.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(err) or err.__class__.__name__,
+        ) from err
     return GenericResponse(detail="success")
 
 
@@ -64,6 +73,17 @@ async def write_to_process(
     """
     result = await process.write_stdin(content.encode())
     return GenericResponse(detail=result)
+
+
+@router.post("/interrupt", response_model=GenericResponse[str])
+async def interrupt_process(
+    process: Processor = Depends(get_process),
+) -> GenericResponse[str]:
+    """
+    - 向 NoneBot 实例进程发送中断信号
+    """
+    await process.interrupt()
+    return GenericResponse(detail="success")
 
 
 @router.get("/log/history", response_model=GenericResponse[List[ProcessLog]])

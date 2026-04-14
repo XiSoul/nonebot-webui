@@ -35,6 +35,7 @@ passlib = "^1.7.4"
 uvicorn = { extras = ["standard"], version = "^0.22.0" }
 httpx = { extras = ["socks"], version = "^0.24.1" }
 python-dotenv = "^1.0.0"
+pyzipper = "^0.3.6"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.10.1"

@@ -6,4 +6,20 @@ import nonebot
 nonebot.logger.remove()
 nonebot.init()
 driver = nonebot.get_driver()
+
+
+def _model_dump_json(model):
+    if hasattr(model, "model_dump_json"):
+        return model.model_dump_json()
+    if hasattr(model, "json"):
+        return model.json()
+    return json.dumps(model)
+
+
+def _model_json_schema(model):
+    if hasattr(model, "model_json_schema"):
+        return model.model_json_schema()
+    if hasattr(model, "schema"):
+        return model.schema()
+    return {}
 {% endmacro %}

@@ -1,6 +1,6 @@
 import asyncio
 import traceback
-from typing import Any, Dict, List, Tuple, Callable, Optional, get_type_hints
+from typing import Any, Dict, List, Tuple, Callable, Optional
 
 from .log import LogStorage
 from .schemas import CustomLog
@@ -44,13 +44,6 @@ class ProcessFuncWithLog:
     async def _done(self, additional_err_msg: Optional[str]) -> None:
         for func, args, kwargs in self.queue:
             try:
-                hints = get_type_hints(func)
-                if hints.get("return") == bool:
-                    if asyncio.iscoroutinefunction(func):
-                        _ = await func(*args, **kwargs)
-                    else:
-                        _ = await asyncio.to_thread(func, *args, **kwargs)
-
                 if asyncio.iscoroutinefunction(func):
                     await func(*args, **kwargs)
                 else:

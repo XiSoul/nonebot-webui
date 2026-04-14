@@ -81,3 +81,20 @@ class NoneBotProjectMeta(BaseModel, Generic[_T]):
     use_env: str = ".env"
     use_run_script: bool = False
     run_script_name: str = "bot.py"
+    bot_use_global_proxy: bool = Field(
+        default=True, description="Use global bot proxy from system settings."
+    )
+    bot_http_proxy: str = Field(default="", description="Bot HTTP proxy URL.")
+    bot_https_proxy: str = Field(default="", description="Bot HTTPS proxy URL.")
+    bot_all_proxy: str = Field(default="", description="Bot ALL_PROXY URL.")
+    bot_no_proxy: str = Field(default="", description="Bot NO_PROXY values.")
+    bot_proxy_protocol: str = Field(
+        default="http", description="Bot proxy builder protocol."
+    )
+    bot_proxy_host: str = Field(default="", description="Bot proxy host.")
+    bot_proxy_port: str = Field(default="", description="Bot proxy port.")
+    bot_proxy_username: str = Field(default="", description="Bot proxy username.")
+    bot_proxy_password: str = Field(default="", description="Bot proxy password.")
+    bot_proxy_apply_target: str = Field(
+        default="http_https", description="Bot proxy apply target."
+    )

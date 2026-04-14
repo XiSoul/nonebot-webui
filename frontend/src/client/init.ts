@@ -2,6 +2,9 @@ import { createApp, type App as VueAPP } from 'vue'
 import { createPinia } from 'pinia'
 import router from '@/router'
 import { client, AuthService } from './api'
+import { getDefaultApiBaseUrl, normalizeApiBaseUrl } from './base'
+import { clearAuthToken, getAuthToken } from './auth'
+import { getErrorMessage } from './utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import App from '@/App.vue'
 import './useMonacoWorker'
@@ -16,33 +19,37 @@ export const initWebUI = async () => {
   installVuePlugins(app)
   app.mount('#app')
 
-  const token = localStorage.getItem('token') || ''
-  const base = localStorage.getItem('debugUrl') || ''
+  const isDebug = localStorage.getItem('isDebug') === '1'
+  const debugBase = isDebug ? localStorage.getItem('debugUrl') || '' : ''
+  const base = normalizeApiBaseUrl(debugBase || getDefaultApiBaseUrl())
+
+  client.setConfig({
+    baseUrl: base
+  })
+
+  const token = getAuthToken()
 
   if (!token) {
     router.push('/login')
     return
   }
 
-  client.setConfig({
-    baseUrl: base
-  })
   client.interceptors.request.use((request) => {
-    request.headers.set('Authorization', `Bearer ${token}`)
+    request.headers.set('Authorization', `Bearer ${getAuthToken()}`)
     return request
   })
 
   const toast = useToastStore()
-
   const { data, error, response } = await AuthService.verifyTokenV1AuthVerifyPost({
     body: {
       jwt_token: token
     }
   })
+
   if (error && response.status === 403) {
-    localStorage.clear()
+    clearAuthToken()
     router.push('/login')
-    toast.add('warning', 'Token 已失效, 请重新登陆', '', 5000)
+    toast.add('warning', getErrorMessage(error, '登录已过期，请重新登录'), '', 5000)
     return
   }
 
@@ -52,9 +59,7 @@ export const initWebUI = async () => {
     const diff = expire - now
     toast.add(
       'info',
-      `Token 有效还剩: ${Math.floor((diff % 86400) / 3600)}h${Math.floor(
-        (diff % 3600) / 60
-      )}m${Math.floor(diff % 60)}s`,
+      `登录会话有效期剩余: ${Math.floor((diff % 86400) / 3600)}h${Math.floor((diff % 3600) / 60)}m${Math.floor(diff % 60)}s`,
       '',
       10000
     )

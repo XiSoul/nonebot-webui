@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import ToastItem from '@/components/ToastItem.vue'
 import { useToastStore } from '@/stores'
 
 const store = useToastStore()
+
+onMounted(() => {
+  void store.loadSettings()
+})
 </script>
 
 <template>

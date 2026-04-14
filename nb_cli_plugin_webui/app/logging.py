@@ -10,6 +10,7 @@ import loguru
 from nb_cli_plugin_webui.i18n import _
 
 from .config import Config
+from .utils.global_log import append_webui_loguru_record
 from .utils.storage import get_data_dir
 from .utils.string_utils import filling_str
 
@@ -129,6 +130,7 @@ logger.add(
     format=log_format,
     filter=LoguruFilter(),
 )
+logger.add(append_webui_loguru_record, level="DEBUG", diagnose=False)
 logger.level(LOG_LEVEL)
 
 if Config.log_is_store:

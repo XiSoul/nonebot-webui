@@ -2,8 +2,8 @@
 import { useRoute } from 'vue-router'
 import router from '@/router'
 import { useViewHistoryRecorderStore } from '@/stores'
-import type { NavItem } from '@/router/client'
-import { ref } from 'vue'
+import { defaultRoutes, type NavItem } from '@/router/client'
+import { onMounted, ref, watch } from 'vue'
 
 const route = useRoute()
 const store = useViewHistoryRecorderStore()
@@ -27,6 +27,11 @@ const isCurrentRoute = (path: string) => {
   return path === route.path
 }
 
+const recordCurrentRoute = () => {
+  const matchedRoute = defaultRoutes.find((item) => item.routeData.path === route.path)
+  if (matchedRoute) store.record(matchedRoute)
+}
+
 const operation = (route: NavItem) => {
   if (!isCloseTab.value) {
     router.push(route.routeData.path)
@@ -41,6 +46,17 @@ const operation = (route: NavItem) => {
   router.push(routeTo)
   isCloseTab.value = false
 }
+
+onMounted(() => {
+  recordCurrentRoute()
+})
+
+watch(
+  () => route.path,
+  () => {
+    recordCurrentRoute()
+  }
+)
 </script>
 
 <template>

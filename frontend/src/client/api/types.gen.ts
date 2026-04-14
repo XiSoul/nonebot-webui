@@ -464,6 +464,16 @@ export type StopProcessV1ProcessStopPostResponse = GenericResponse_str_
 
 export type StopProcessV1ProcessStopPostError = HTTPValidationError
 
+export type InterruptProcessV1ProcessInterruptPostData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type InterruptProcessV1ProcessInterruptPostResponse = GenericResponse_str_
+
+export type InterruptProcessV1ProcessInterruptPostError = HTTPValidationError
+
 export type WriteToProcessV1ProcessWritePostData = {
   query: {
     content: string

@@ -10,16 +10,29 @@ from nb_cli_plugin_webui.app.models.types import ModuleType
 from nb_cli_plugin_webui.app.handlers import call_pip_install
 from nb_cli_plugin_webui.app.models.store import Plugin, ModuleInfo
 from nb_cli_plugin_webui.app.project import service as project_service
+from nb_cli_plugin_webui.app.process.service import run_nonebot_project
 from nb_cli_plugin_webui.app.utils.string_utils import generate_complexity_string
 from nb_cli_plugin_webui.app.project.exceptions import WriteNoneBotProjectProfileFailed
 from nb_cli_plugin_webui.app.handlers.process import (
     CustomLog,
     LogStorage,
     LogStorageFather,
+    ProcessManager,
     ProcessFuncWithLog,
 )
 
-from .exception import ModuleNotFound, ModuleIsExisted, ModuleTypeNotFound
+from .exception import (
+    ModuleNotFound,
+    ModuleIsExisted,
+    ModuleTypeNotFound,
+    ProjectIsRunning,
+)
+
+
+def _ensure_project_is_stopped(project: project_service.NoneBotProjectManager) -> None:
+    process = ProcessManager.get_process(project.project_id)
+    if process and process.process_is_running:
+        raise ProjectIsRunning()
 
 
 def install_nonebot_module(
@@ -27,6 +40,10 @@ def install_nonebot_module(
     env: str,
     module: Annotated[Union[ModuleInfo, Plugin], Field(discriminator="module_type")],
 ) -> str:
+    running_process = ProcessManager.get_process(project.project_id)
+    should_restart_after_install = bool(
+        running_process and running_process.process_is_running
+    )
     project_meta = project.read()
     if isinstance(module, Plugin):
         for plugin in project_meta.plugins:
@@ -62,6 +79,24 @@ def install_nonebot_module(
     process.add(
         log.add_log, CustomLog(message=f"Install module name: {module.module_name}")
     )
+    if should_restart_after_install:
+        process.add(
+            log.add_log,
+            CustomLog(message="实例当前正在运行，将先停止实例，安装完成后再自动启动。"),
+        )
+
+    async def stop_project_if_needed():
+        if not should_restart_after_install:
+            return True
+
+        running_process = ProcessManager.get_process(project.project_id)
+        if running_process and running_process.process_is_running:
+            await log.add_log(CustomLog(message="正在停止实例..."))
+            await running_process.stop()
+            await log.add_log(CustomLog(message="实例已停止，开始安装模块。"))
+        return True
+
+    process.add(stop_project_if_needed)
 
     async def install_module():
         proc, _ = await call_pip_install(
@@ -69,8 +104,13 @@ def install_nonebot_module(
             ["-i", project_meta.mirror_url],
             log_storage=log,
             python_path=project.config_manager.python_path,
+            project_meta=project_meta,
         )
-        await proc.wait()
+        return_code = await proc.wait()
+        if return_code != 0:
+            raise RuntimeError(
+                f"Install failed for {module.project_link} (exit code: {return_code})."
+            )
         return True
 
     process.add(install_module)
@@ -85,6 +125,17 @@ def install_nonebot_module(
         return True
 
     process.add(write_to_project_profile)
+
+    async def restart_project_if_needed():
+        if not should_restart_after_install:
+            return True
+
+        await log.add_log(CustomLog(message="安装完成，正在重新启动实例以加载新模块..."))
+        await run_nonebot_project(project)
+        await log.add_log(CustomLog(message="实例已重新启动。"))
+        return True
+
+    process.add(restart_project_if_needed)
     process.add(log.add_log, CustomLog(message="✨ Done!"))
     process.done()
 
@@ -96,6 +147,7 @@ async def uninstall_nonebot_module(
     env: str,
     module: Annotated[Union[ModuleInfo, Plugin], Field(discriminator="module_type")],
 ) -> None:
+    _ensure_project_is_stopped(project)
     if isinstance(module, Plugin):
         for plugin in project.read().plugins:
             if module.module_name == plugin.module_name:

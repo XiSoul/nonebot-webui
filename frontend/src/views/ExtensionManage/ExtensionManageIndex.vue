@@ -6,11 +6,11 @@ import {
   type Driver as BaseDriver,
   type nb_cli_plugin_webui__app__models__base__Plugin
 } from '@/client/api'
-import { compareSemanticVersion } from '@/client/utils'
+import { compareSemanticVersion, getErrorMessage } from '@/client/utils'
 import router from '@/router'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import { useFetch } from '@vueuse/core'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const store = useNoneBotStore()
 const toast = useToastStore()
@@ -32,6 +32,21 @@ interface Driver extends BaseDriver {
 const pluginsRef = ref<Plugin[]>()
 const adaptersRef = ref<Adapter[]>()
 const driversRef = ref<Driver[]>()
+const isModuleActionLocked = computed(() => Boolean(store.selectedBot?.is_running))
+
+const ensureBotStopped = () => {
+  if (!store.selectedBot) {
+    toast.add('warning', '请先选择实例', '', 5000)
+    return false
+  }
+
+  if (store.selectedBot.is_running) {
+    toast.add('warning', '实例运行中，请先停止实例后再进行插件、适配器或驱动操作', '', 5000)
+    return false
+  }
+
+  return true
+}
 
 const getPlugins = async () => {
   const { data } = await ProjectService.getPluginsV1ProjectPluginsGet({
@@ -59,20 +74,19 @@ const getDrivers = async () => {
 
 const getData = async () => {
   if (!store.selectedBot) {
-    toast.add('error', '请先选择实例', '', 5000)
+    toast.add('warning', '请先选择实例', '', 5000)
     return
   }
 
   await getPlugins()
   await getAdapters()
   await getDrivers()
-
-  toast.add('info', '数据加载完成', '', 5000)
+  toast.add('info', '模块列表已刷新', '', 3000)
 }
 
 const updateLatestVersion = async () => {
   if (!store.selectedBot) {
-    toast.add('error', '请先选择实例', '', 5000)
+    toast.add('warning', '请先选择实例', '', 5000)
     return
   }
 
@@ -102,7 +116,7 @@ const updateLatestVersion = async () => {
     )
   }
 
-  toast.add('info', '检查更新完成', '', 5000)
+  toast.add('info', '版本检查完成', '', 3000)
 }
 
 onMounted(async () => {
@@ -111,16 +125,14 @@ onMounted(async () => {
 })
 
 const uninstall = async (module: Plugin | Adapter | Driver) => {
-  if (!store.selectedBot) return
+  if (!ensureBotStopped()) return
 
   const moduleType = 'valid' in module ? 'plugin' : 'module'
-
   const { data, error } = await StoreService.uninstallNonebotModuleV1StoreNonebotUninstallPost({
     query: {
-      env: store.selectedBot.use_env!,
-      project_id: store.selectedBot.project_id
+      env: store.selectedBot!.use_env!,
+      project_id: store.selectedBot!.project_id
     },
-
     // @ts-ignore
     body: {
       ...module,
@@ -129,12 +141,13 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
   })
 
   if (error) {
-    toast.add('error', `卸载失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `卸载失败，原因：${getErrorMessage(error)}`, '', 5000)
+    return
   }
 
   if (data) {
     await getData()
-    toast.add('success', '卸载成功', '', 5000)
+    toast.add('success', '卸载成功', '', 4000)
   }
 }
 </script>
@@ -143,22 +156,27 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
   <div class="flex flex-col gap-4 w-full">
     <div class="w-full p-6 bg-base-200 rounded-box flex items-center">
       <div class="shrink-0 font-semibold text-lg">
-        <h3>操作</h3>
+        <h3>模块操作</h3>
       </div>
 
       <div class="w-full flex items-center justify-end gap-2">
-        <button class="btn btn-sm shadow-none btn-primary text-base-100">检查更新</button>
+        <span v-if="isModuleActionLocked" class="badge badge-warning">
+          实例运行中，模块操作已锁定
+        </span>
+        <button class="btn btn-sm shadow-none btn-primary text-base-100" @click="updateLatestVersion()">
+          检查更新
+        </button>
         <button class="btn btn-sm shadow-none" @click="getData()">刷新</button>
       </div>
     </div>
 
-    <div class="collapse">
+    <div class="collapse bg-base-200">
       <input type="checkbox" />
-      <div class="collapse-title">
-        <h3>插件管理</h3>
+      <div class="collapse-title p-6">
+        <h3 class="font-semibold text-lg">插件管理</h3>
       </div>
 
-      <div class="collapse-content overflow-x-auto relative">
+      <div class="collapse-content px-4 overflow-x-auto relative pb-4">
         <table class="table table-sm">
           <thead>
             <tr>
@@ -188,9 +206,9 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
               <td>{{ plugin.latestVersion }}</td>
               <td>
                 <select
-                  class="select select-sm"
-                  :disabled="!plugin.releases"
                   v-model="plugin.selectedVersion"
+                  class="select select-sm"
+                  :disabled="!plugin.releases || isModuleActionLocked"
                 >
                   <option disabled>请选择</option>
                   <option v-for="version in plugin.releases" :key="version">
@@ -205,8 +223,8 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                 >
                   设置
                 </button>
-                <label class="swap btn btn-sm btn-ghost">
-                  <input type="checkbox" />
+                <label class="swap btn btn-sm btn-ghost" :class="{ 'btn-disabled': isModuleActionLocked }">
+                  <input type="checkbox" :disabled="isModuleActionLocked" />
                   <div class="swap-off" @click="uninstall(plugin)">卸载</div>
                   <div class="swap-on text-primary">确认</div>
                 </label>
@@ -216,6 +234,7 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                     (plugin.version !== plugin.selectedVersion && plugin.selectedVersion)
                   "
                   class="btn btn-primary btn-sm text-base-100"
+                  :disabled="isModuleActionLocked"
                 >
                   更新
                 </button>
@@ -226,19 +245,17 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
       </div>
     </div>
 
-    <div class="collapse">
+    <div class="collapse bg-base-200">
       <input type="checkbox" />
-      <div class="collapse-title">
-        <h3>适配器管理</h3>
+      <div class="collapse-title p-6">
+        <h3 class="font-semibold text-lg">适配器管理</h3>
       </div>
-      <div class="collapse-content">
+      <div class="collapse-content px-4 pb-4">
         <div class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
                 <th>名称</th>
-                <!-- <th>本地版本</th>
-                <th>远程版本</th> -->
                 <th>操作</th>
               </tr>
             </thead>
@@ -249,8 +266,6 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                 class="hover:bg-base-300 transition-colors"
               >
                 <th>{{ adapter.name }}</th>
-                <!-- <td>{{ adapter.version }}</td>
-                <td>{{ adapter.latestVersion }}</td> -->
                 <td class="flex item-center gap-2">
                   <button
                     class="btn btn-ghost btn-sm"
@@ -258,7 +273,7 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                   >
                     设置
                   </button>
-                  <button class="btn btn-ghost btn-sm">卸载</button>
+                  <button class="btn btn-ghost btn-sm" :disabled="isModuleActionLocked">卸载</button>
                 </td>
               </tr>
             </tbody>
@@ -267,19 +282,17 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
       </div>
     </div>
 
-    <div class="collapse">
+    <div class="collapse bg-base-200">
       <input type="checkbox" />
-      <div class="collapse-title">
-        <h3>驱动器管理</h3>
+      <div class="collapse-title p-6">
+        <h3 class="font-semibold text-lg">驱动管理</h3>
       </div>
-      <div class="collapse-content">
+      <div class="collapse-content px-4 pb-4">
         <div class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
                 <th>名称</th>
-                <!-- <th>本地版本</th>
-                <th>远程版本</th> -->
                 <th>操作</th>
               </tr>
             </thead>
@@ -290,8 +303,6 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                 class="hover:bg-base-300 transition-colors"
               >
                 <th>{{ driver.name }}</th>
-                <!-- <td>{{ driver.version }}</td>
-                <td>{{ driver.latestVersion }}</td> -->
                 <td class="flex item-center gap-2">
                   <button
                     class="btn btn-ghost btn-sm"
@@ -299,7 +310,7 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                   >
                     设置
                   </button>
-                  <button class="btn btn-ghost btn-sm">卸载</button>
+                  <button class="btn btn-ghost btn-sm" :disabled="isModuleActionLocked">卸载</button>
                 </td>
               </tr>
             </tbody>
@@ -309,35 +320,3 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
     </div>
   </div>
 </template>
-
-<style lang="css" scoped>
-.collapse {
-  @apply bg-base-200;
-}
-
-.collapse-title {
-  @apply p-6;
-}
-
-.collapse-title > h3 {
-  @apply font-semibold text-lg;
-}
-
-.collapse-content {
-  @apply px-4;
-}
-
-.collapse[open] > :where(.collapse-content),
-.collapse-open > :where(.collapse-content),
-.collapse:focus:not(.collapse-close) > :where(.collapse-content),
-.collapse:not(.collapse-close) > :where(input[type='checkbox']:checked ~ .collapse-content),
-.collapse:not(.collapse-close) > :where(input[type='radio']:checked ~ .collapse-content) {
-  @apply pb-4;
-}
-
-.collapse-title,
-:where(.collapse > input[type='checkbox']),
-:where(.collapse > input[type='radio']) {
-  @apply min-h-0;
-}
-</style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ProcessService, type ProcessLog } from '@/client/api'
+import { getAuthToken } from '@/client/auth'
 import { generateURLForWebUI } from '@/client/utils'
 import { useCustomStore, useNoneBotStore, useToastStore } from '@/stores'
 import { useWebSocket } from '@vueuse/core'
@@ -14,6 +15,7 @@ const logShowTable = ref<HTMLElement>()
 const currentBot = ref("")
 const commandInput = ref("")
 const commandSending = ref(false)
+let historyPollTimer: ReturnType<typeof setInterval> | null = null
 
 const scrollToBottom = async () => {
   await nextTick()
@@ -27,20 +29,22 @@ const appendLocalLog = async (message: string) => {
   await scrollToBottom()
 }
 
-const subscribeLog = () => {
-  if (!store.selectedBot) return
-  send(JSON.stringify({ type: "log", log_key: store.selectedBot.project_id }))
-  currentBot.value = store.selectedBot.project_id
+const subscribeLog = (projectId?: string) => {
+  const logKey = projectId ?? store.selectedBot?.project_id
+  if (!logKey) return
+  send(JSON.stringify({ type: "log", log_key: logKey }))
+  currentBot.value = logKey
 }
 
-const getHistoryLogs = async () => {
-  if (!store.selectedBot) return
+const getHistoryLogs = async (projectId?: string) => {
+  const logId = projectId ?? store.selectedBot?.project_id
+  if (!logId) return
 
   const getLogCount = 200
   const { data, error } = await ProcessService.getLogHistoryV1ProcessLogHistoryGet({
     query: {
       log_count: getLogCount,
-      log_id: store.selectedBot.project_id
+      log_id: logId
     }
   })
 
@@ -50,6 +54,7 @@ const getHistoryLogs = async () => {
   }
 
   if (data) {
+    if (store.selectedBot?.project_id !== logId) return
     logData.value = data.detail
     await scrollToBottom()
   }
@@ -88,7 +93,26 @@ const sendCommand = async () => {
 }
 
 const sendInterrupt = async () => {
-  await writeToProcess("\u0003", "^C")
+  if (!store.selectedBot) return
+  if (!store.selectedBot.is_running) {
+    toast.add("warning", "Bot is not running.", "", 3000)
+    return
+  }
+
+  commandSending.value = true
+  const { error } = await ProcessService.interruptProcessV1ProcessInterruptPost({
+    query: {
+      project_id: store.selectedBot.project_id
+    }
+  })
+  commandSending.value = false
+
+  if (error) {
+    toast.add("error", `Send interrupt failed: ${error.detail}`, "", 5000)
+    return
+  }
+
+  await appendLocalLog("^C")
 }
 
 const { status, data, close, open, send } = useWebSocket<ProcessLog>(
@@ -96,9 +120,10 @@ const { status, data, close, open, send } = useWebSocket<ProcessLog>(
   {
     immediate: false,
     onConnected(ws) {
-      const token = localStorage.getItem("token") ?? ""
+      const token = getAuthToken()
       ws.send(token)
       subscribeLog()
+      void getHistoryLogs()
 
       if (customStore.isDebug) {
         toast.add("success", "Debug: terminal websocket connected.", "TerminalItem.vue", 5000)
@@ -117,11 +142,20 @@ const canWriteCommand = computed(
 
 onMounted(async () => {
   if (!store.selectedBot) return
-  open()
-  await getHistoryLogs()
+  await getHistoryLogs(store.selectedBot.project_id)
+  if (store.selectedBot.is_running) open()
+
+  historyPollTimer = setInterval(() => {
+    if (!store.selectedBot?.project_id) return
+    void getHistoryLogs(store.selectedBot.project_id)
+  }, 8000)
 })
 
 onUnmounted(() => {
+  if (historyPollTimer) {
+    clearInterval(historyPollTimer)
+    historyPollTimer = null
+  }
   close()
 })
 
@@ -138,29 +172,59 @@ watch(
 
 watch(
   () => status.value,
-  (newStatus) => {
-    if (newStatus === "OPEN") subscribeLog()
+  async (newStatus) => {
+    if (newStatus !== "OPEN") return
+    subscribeLog()
+    await getHistoryLogs()
   }
 )
 
 watch(
-  () => store.selectedBot,
-  async (newValue) => {
-    if (!newValue) return
-
-    if (newValue.project_id !== currentBot.value) {
-      currentBot.value = newValue.project_id
+  () => store.selectedBot?.project_id,
+  async (projectId, previousProjectId) => {
+    if (!projectId) {
+      currentBot.value = ""
       logData.value = []
-      await getHistoryLogs()
+      close()
+      return
     }
 
-    if (newValue.is_running) {
+    if (projectId !== previousProjectId) {
+      currentBot.value = projectId
+      logData.value = []
+      await getHistoryLogs(projectId)
+    }
+
+    if (store.selectedBot?.is_running) {
       if (status.value !== "OPEN") {
         open()
       } else {
-        subscribeLog()
+        subscribeLog(projectId)
+        await getHistoryLogs(projectId)
       }
-    } else {
+    } else if (status.value === "OPEN") {
+      close()
+    }
+  }
+)
+
+watch(
+  () => store.selectedBot?.is_running,
+  async (isRunning) => {
+    const projectId = store.selectedBot?.project_id
+    if (!projectId) return
+
+    if (isRunning) {
+      await getHistoryLogs(projectId)
+      if (status.value !== "OPEN") {
+        open()
+      } else {
+        subscribeLog(projectId)
+      }
+      return
+    }
+
+    if (status.value === "OPEN") {
       close()
     }
   }

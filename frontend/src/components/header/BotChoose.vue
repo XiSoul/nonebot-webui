@@ -4,6 +4,15 @@ import { useNoneBotStore } from '@/stores'
 import DrawerItem from '@/components/DrawerItem.vue'
 import CreateBotIndex from '@/components/Modals/CreateBot/CreateBotIndex.vue'
 
+const props = withDefaults(
+  defineProps<{
+    sidebar?: boolean
+  }>(),
+  {
+    sidebar: false
+  }
+)
+
 const store = useNoneBotStore()
 
 const createBotModal = ref<InstanceType<typeof CreateBotIndex> | null>(null)
@@ -15,8 +24,16 @@ const drawerRef = ref<InstanceType<typeof DrawerItem> | null>(null)
 
   <DrawerItem ref="drawerRef">
     <template v-slot:button>
-      <button class="btn btn-sm btn-ghost btn-square" @click="drawerRef?.showDrawer()">
+      <button
+        :class="
+          props.sidebar
+            ? 'btn btn-primary text-base-100 w-full h-11 justify-start gap-2 text-sm font-medium'
+            : 'btn btn-sm btn-ghost btn-square'
+        "
+        @click="drawerRef?.showDrawer()"
+      >
         <span class="material-symbols-outlined"> robot_2 </span>
+        <span v-if="props.sidebar">实例选择</span>
       </button>
     </template>
 

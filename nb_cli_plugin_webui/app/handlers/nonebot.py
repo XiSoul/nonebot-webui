@@ -1,7 +1,8 @@
 import re
 import json
+import ast
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from nb_cli.handlers import get_default_python
 
@@ -13,6 +14,19 @@ from . import templates
 def _findall(pattern, string) -> str:
     matches = re.findall(pattern, string)
     return matches[0] if matches else str()
+
+
+def _loads_json_or_literal(content: str, default: Any):
+    raw = (content or "").strip()
+    if not raw:
+        return default
+
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            return parser(raw)
+        except Exception:
+            continue
+    return default
 
 
 async def get_nonebot_loaded_plugins(
@@ -39,7 +53,10 @@ async def get_nonebot_loaded_config(
     t = templates.get_template("scripts/nonebot/get_nonebot_loaded_config.py.jinja")
     raw_content = await run_python_script(python_path, await t.render_async(), cwd)
 
-    return json.loads(_findall(r"nonebot_loaded_config:\s*(.*)", raw_content))
+    config = _loads_json_or_literal(
+        _findall(r"nonebot_loaded_config:\s*(.*)", raw_content), default={}
+    )
+    return config if isinstance(config, dict) else {}
 
 
 async def get_nonebot_self_config_schema(
@@ -53,7 +70,10 @@ async def get_nonebot_self_config_schema(
     )
     raw_content = await run_python_script(python_path, await t.render_async(), cwd)
 
-    return json.loads(_findall(r"nonebot_self_config_schema:\s*(.*)", raw_content))
+    schema = _loads_json_or_literal(
+        _findall(r"nonebot_self_config_schema:\s*(.*)", raw_content), default={}
+    )
+    return schema if isinstance(schema, dict) else {}
 
 
 async def get_nonebot_plugin_config_schema(
@@ -69,12 +89,15 @@ async def get_nonebot_plugin_config_schema(
         python_path, await t.render_async(plugin=plugin), cwd
     )
 
-    return json.loads(_findall(r"nonebot_plugin_config_schema:\s*(.*)", raw_content))
+    schema = _loads_json_or_literal(
+        _findall(r"nonebot_plugin_config_schema:\s*(.*)", raw_content), default={}
+    )
+    return schema if isinstance(schema, dict) else {}
 
 
 async def get_nonebot_plugin_metadata(
     plugin: str, cwd: Optional[Path] = None, python_path: Optional[str] = None
-):
+) -> Dict[str, Any]:
     if python_path is None:
         python_path = await get_default_python()
 
@@ -82,5 +105,15 @@ async def get_nonebot_plugin_metadata(
     raw_content = await run_python_script(
         python_path, await t.render_async(plugin=plugin), cwd
     )
+    metadata = _loads_json_or_literal(
+        _findall(r"nonebot_plugin_metadata:\s*(.*)", raw_content),
+        default={},
+    )
 
-    return json.loads(_findall(r"nonebot_plugin_metadata:\s*(.*)", raw_content))
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    metadata.setdefault("module_name", plugin)
+    metadata.setdefault("name", plugin)
+    metadata.setdefault("config", {})
+    return metadata

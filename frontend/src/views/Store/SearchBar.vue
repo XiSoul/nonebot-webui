@@ -64,15 +64,22 @@ const checkIsSearch = (e: KeyboardEvent) => {
     (store.searchInput || store.searchTags.length > 0) &&
     !customStore.isInstantSearch
   ) {
-    store.upDataBySearch(nonebotStore.selectedBot?.project_id!)
+    store.upDataBySearch(nonebotStore.selectedBot?.project_id ?? '')
   }
 }
 
 watch(
   () => [store.searchInput, store.searchTags.length],
   async () => {
-    if (customStore.isInstantSearch || (!store.searchInput && store.searchTags.length === 0)) {
-      await store.upDataBySearch(nonebotStore.selectedBot?.project_id!)
+    const projectID = nonebotStore.selectedBot?.project_id ?? ''
+
+    if (!store.searchInput && store.searchTags.length === 0) {
+      await store.updateData(projectID, false)
+      return
+    }
+
+    if (customStore.isInstantSearch) {
+      await store.upDataBySearch(projectID)
     }
   }
 )
@@ -155,7 +162,7 @@ const filterItems: filterItem[] = [
           :key="m.tip"
           role="tab"
           :class="{ tab: true, 'tab-active': store.viewModule === m.label }"
-          @click="store.selectModule(m.label, nonebotStore.selectedBot?.project_id!)"
+          @click="store.selectModule(m.label, nonebotStore.selectedBot?.project_id ?? '')"
         >
           {{ m.tip }}
         </a>

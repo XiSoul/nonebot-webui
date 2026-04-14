@@ -1,13 +1,15 @@
 import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { v4 as uuidv4 } from 'uuid'
 import { ProjectService } from '@/client/api'
 import type { NoneBotProjectMeta } from '@/client/api'
+import { getErrorMessage } from '@/client/utils'
 import { useToastStore } from './ToastStore'
 import { useStatusStore } from './StatusStore'
-import { v4 as uuidv4 } from 'uuid'
 
 const ID_OF_ENV_STATUS = uuidv4()
 const ID_OF_BOT_STATUS = uuidv4()
+const SELECTED_BOT_KEY = 'selectedBot'
 
 export const useNoneBotStore = defineStore('nonebotStore', () => {
   const bots = ref<{ [key: string]: NoneBotProjectMeta }>({})
@@ -16,10 +18,17 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
   const toast = useToastStore()
   const statusStore = useStatusStore()
 
-  const selectedBotFromLocalStorage = localStorage.getItem('selectedBot')
-  if (selectedBotFromLocalStorage) {
-    selectedBot.value = JSON.parse(selectedBotFromLocalStorage)
+  const loadSelectedFromStorage = () => {
+    const raw = localStorage.getItem(SELECTED_BOT_KEY)
+    if (!raw) return
+    try {
+      selectedBot.value = JSON.parse(raw) as NoneBotProjectMeta
+    } catch {
+      localStorage.removeItem(SELECTED_BOT_KEY)
+    }
   }
+
+  loadSelectedFromStorage()
 
   const getExtendedBotsList = (): NoneBotProjectMeta[] => {
     return Object.keys(bots.value).map((projectID) => ({
@@ -28,53 +37,87 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     }))
   }
 
-  const selectBot = (bot: NoneBotProjectMeta) => {
+  const syncBotEnvState = (projectId: string, env: string) => {
+    const target = bots.value[projectId]
+    if (target) {
+      target.use_env = env
+    }
+
+    if (selectedBot.value?.project_id === projectId && selectedBot.value) {
+      selectedBot.value.use_env = env
+      localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(selectedBot.value))
+    }
+  }
+
+  const selectBot = (bot: NoneBotProjectMeta, silent = false) => {
     selectedBot.value = bot
-    localStorage.setItem('selectedBot', JSON.stringify(bot))
-    toast.add('success', `已选择实例: ${bot.project_name}`, '', 5000)
+    localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(bot))
+    if (!silent) {
+      toast.add('success', `已选择实例: ${bot.project_name}`, '', 3000)
+    }
   }
 
   const loadBots = async () => {
     const { data } = await ProjectService.listProjectV1ProjectListGet()
-    if (data) {
-      bots.value = data.detail
-      selectedBot.value = selectedBot.value ? bots.value[selectedBot.value.project_id] : undefined
-    }
-  }
+    if (!data) return
 
-  const updateEnv = async (env: string) => {
-    if (!selectedBot.value) {
+    bots.value = data.detail
+    const botList = Object.values(bots.value)
+    if (!botList.length) {
+      selectedBot.value = undefined
+      localStorage.removeItem(SELECTED_BOT_KEY)
       return
     }
 
+    if (selectedBot.value) {
+      const synced = bots.value[selectedBot.value.project_id]
+      if (synced) {
+        selectedBot.value = synced
+        localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(synced))
+        return
+      }
+    }
+
+    // Auto-fallback to first instance when current one is deleted.
+    selectBot(botList[0], true)
+  }
+
+  const updateBotEnv = async (projectId: string, env: string) => {
+    const normalizedEnv = env.trim()
+    if (!projectId || !normalizedEnv) return false
+
     const { data, error } = await ProjectService.useProjectEnvV1ProjectConfigEnvUsePost({
       query: {
-        env: env,
-        project_id: selectedBot.value.project_id
+        env: normalizedEnv,
+        project_id: projectId
       }
     })
 
     if (error) {
-      toast.add('error', `更新环节失败, 原因: ${error.detail?.toString()}`, '', 5000)
+      toast.add('error', `更新环境失败, 原因: ${getErrorMessage(error)}`, '', 5000)
+      return false
     }
 
-    if (data && selectedBot.value) {
-      selectedBot.value.use_env = env
+    if (data) {
+      syncBotEnvState(projectId, normalizedEnv)
+      toast.add('success', `环境已切换到 ${normalizedEnv}`, '', 3000)
+      return true
     }
+
+    return false
   }
 
-  const data = localStorage.getItem('selectedBot')
-  if (data) {
-    selectedBot.value = JSON.parse(data) as NoneBotProjectMeta
+  const updateEnv = async (env: string) => {
+    if (!selectedBot.value) return false
+    return updateBotEnv(selectedBot.value.project_id, env)
   }
 
   watch(
     () => selectedBot.value,
     (bot) => {
-      if (bot) {
-        statusStore.update(ID_OF_BOT_STATUS, 'badge-ghost', `当前实例: ${bot.project_name}`)
-        statusStore.update(ID_OF_ENV_STATUS, 'badge-ghost', `当前环境: ${bot.use_env}`)
-      }
+      if (!bot) return
+      statusStore.update(ID_OF_BOT_STATUS, 'badge-ghost', `当前实例: ${bot.project_name}`)
+      statusStore.update(ID_OF_ENV_STATUS, 'badge-ghost', `当前环境: ${bot.use_env}`)
     }
   )
 
@@ -91,6 +134,7 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     getExtendedBotsList,
     selectBot,
     loadBots,
+    updateBotEnv,
     updateEnv
   }
 })

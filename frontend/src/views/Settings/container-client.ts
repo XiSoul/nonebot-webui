@@ -1,7 +1,9 @@
 import { generateURLForWebUI } from "@/client/utils";
+import { getAuthToken } from "@/client/auth";
 
 export type ContainerRuntimeSettings = {
   is_docker: boolean;
+  proxy_url: string;
   http_proxy: string;
   https_proxy: string;
   all_proxy: string;
@@ -10,6 +12,18 @@ export type ContainerRuntimeSettings = {
   pip_index_url: string;
   pip_extra_index_url: string;
   pip_trusted_host: string;
+  github_proxy_base_url: string;
+  bot_http_proxy: string;
+  bot_https_proxy: string;
+  bot_all_proxy: string;
+  bot_no_proxy: string;
+  bot_proxy_protocol: string;
+  bot_proxy_host: string;
+  bot_proxy_port: string;
+  bot_proxy_username: string;
+  bot_proxy_password: string;
+  bot_proxy_apply_target: string;
+  bot_proxy_instances: string;
 };
 
 export type ContainerRuntimeConnectivityItem = {
@@ -56,7 +70,7 @@ type GenericResponse<T> = {
 };
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("token") ?? "";
+  const token = getAuthToken();
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -129,7 +143,7 @@ export const testContainerRuntimeSettings = async (
 export const benchmarkContainerRuntimePresets = async (
   proxy: Pick<
     Omit<ContainerRuntimeSettings, "is_docker">,
-    "http_proxy" | "https_proxy" | "all_proxy" | "no_proxy"
+    "proxy_url" | "no_proxy"
   >
 ) => {
   const url = generateURLForWebUI("/v1/system/container/runtime/preset/benchmark");

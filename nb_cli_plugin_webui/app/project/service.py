@@ -1,7 +1,10 @@
 import json
 import asyncio
+import shutil
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Tuple
+from cookiecutter.exceptions import OutputDirExistsException
+from dotenv import set_key, dotenv_values
 
 from nb_cli.config import ConfigManager
 from nb_cli.cli.commands.project import ProjectContext
@@ -21,21 +24,158 @@ from nb_cli_plugin_webui.app.handlers.process import (
     ProcessFuncWithLog,
 )
 
-from .exceptions import ProjectDirIsNotDir
+from .exceptions import (
+    ProjectDirectoryAlreadyExists,
+    ProjectDirIsNotDir,
+    ProjectNameAlreadyExists,
+    ProjectPortAlreadyExists,
+)
 from .schemas import AddProjectData, CreateProjectData
 
 
+def _driver_sort_key(driver: ModuleInfo) -> int:
+    value = f"{driver.module_name} {driver.project_link} {driver.name}".lower()
+    if "httpx" in value or "websocket" in value:
+        return 10
+    return 0
+
+
+def _can_reset_project_dir(project_dir: Path, base_project_dir: Path) -> bool:
+    try:
+        project_dir.resolve().relative_to(base_project_dir.resolve())
+    except ValueError:
+        return False
+    return project_dir.exists() and project_dir != base_project_dir
+
+
+def _reset_failed_project_dir(project_dir: Path, base_project_dir: Path) -> bool:
+    if not _can_reset_project_dir(project_dir, base_project_dir):
+        return False
+
+    shutil.rmtree(project_dir)
+    return True
+
+
+def normalize_project_name(project_name: str) -> str:
+    return project_name.strip().replace(" ", "-")
+
+
+def _normalize_project_name_key(project_name: str) -> str:
+    return normalize_project_name(project_name).casefold()
+
+
+def normalize_project_dir(project_dir: Path) -> str:
+    return str(project_dir.expanduser().resolve()).casefold()
+
+
+def parse_project_port(value: Any) -> int:
+    try:
+        port = int(str(value).strip())
+    except Exception:
+        return 0
+    return port if 1024 <= port <= 65535 else 0
+
+
+def _get_project_map() -> Dict[str, NoneBotProjectMeta]:
+    try:
+        return NoneBotProjectManager.get_project()
+    except Exception:
+        return {}
+
+
+def ensure_project_name_is_unique(
+    project_name: str, *, exclude_project_id: Optional[str] = None
+) -> None:
+    normalized_name = _normalize_project_name_key(project_name)
+    if not normalized_name:
+        return
+
+    for current_project_id, meta in _get_project_map().items():
+        if current_project_id == exclude_project_id:
+            continue
+        if _normalize_project_name_key(meta.project_name) == normalized_name:
+            raise ProjectNameAlreadyExists(normalize_project_name(project_name))
+
+
+def ensure_project_dir_is_unique(
+    project_dir: Path, *, exclude_project_id: Optional[str] = None
+) -> None:
+    normalized_project_dir = normalize_project_dir(project_dir)
+    for current_project_id, meta in _get_project_map().items():
+        if current_project_id == exclude_project_id:
+            continue
+        if normalize_project_dir(Path(meta.project_dir)) == normalized_project_dir:
+            raise ProjectDirectoryAlreadyExists(str(project_dir), meta.project_name)
+
+
+def resolve_project_use_env(project_dir: Path) -> str:
+    base_env = project_dir / ".env"
+    if not base_env.is_file():
+        return ".env"
+
+    env_name = str(dotenv_values(base_env).get("ENVIRONMENT", "")).strip()
+    if not env_name:
+        return ".env"
+
+    env_file_name = f".env.{env_name}"
+    if (project_dir / env_file_name).is_file():
+        return env_file_name
+    return ".env"
+
+
+def get_project_env_port(project_dir: Path, env_name: str) -> int:
+    env_path = project_dir / env_name
+    if not env_path.is_file():
+        return 0
+    return parse_project_port(dotenv_values(env_path).get("PORT"))
+
+
+def get_project_port_usage(
+    *, exclude_project_id: Optional[str] = None
+) -> Dict[int, Tuple[str, str]]:
+    result: Dict[int, Tuple[str, str]] = {}
+    for current_project_id, meta in _get_project_map().items():
+        if current_project_id == exclude_project_id:
+            continue
+
+        project_dir = Path(meta.project_dir)
+        if not project_dir.exists():
+            continue
+
+        env_name = getattr(meta, "use_env", "") or resolve_project_use_env(project_dir)
+        port = get_project_env_port(project_dir, env_name)
+        if port:
+            result.setdefault(port, (current_project_id, meta.project_name))
+    return result
+
+
+def ensure_project_port_is_unique(
+    port: int, *, exclude_project_id: Optional[str] = None
+) -> None:
+    if port <= 0:
+        return
+    used_ports = get_project_port_usage(exclude_project_id=exclude_project_id)
+    conflict = used_ports.get(port)
+    if conflict:
+        _, project_name = conflict
+        raise ProjectPortAlreadyExists(port, project_name)
+
+
 def create_nonebot_project(data: CreateProjectData) -> str:
-    project_name = data.project_name.replace(" ", "-")
-    base_project_dir = Config.base_dir / Path(data.project_dir)
+    project_name = normalize_project_name(data.project_name)
+    ensure_project_name_is_unique(project_name)
+    base_project_dir = Path(Config.base_dir) / Path(data.project_dir)
+    base_project_dir.mkdir(parents=True, exist_ok=True)
     project_dir = base_project_dir / project_name
-    drivers = [driver.project_link for driver in data.drivers]
+    ensure_project_dir_is_unique(project_dir)
+    sorted_drivers = sorted(data.drivers, key=_driver_sort_key)
+    drivers = [driver.project_link for driver in sorted_drivers]
     adapters = [adapter.project_link for adapter in data.adapters]
 
     context = ProjectContext()
     context.variables["project_name"] = project_name
     context.variables["drivers"] = json.dumps(
-        {driver.project_link: driver.dict() for driver in data.drivers}
+        {driver.project_link: driver.dict() for driver in sorted_drivers}
     )
     context.packages.extend(drivers)
     context.variables["adapters"] = json.dumps(
@@ -72,12 +212,38 @@ def create_nonebot_project(data: CreateProjectData) -> str:
     )
 
     process.add(log.add_log, CustomLog(message="Generate NoneBot project..."))
-    process.add(
-        create_project,
-        "bootstrap" if data.is_bootstrap else "simple",
-        {"nonebot": context.variables},
-        str(base_project_dir.absolute()),
-    )
+    async def generate_project():
+        try:
+            await asyncio.to_thread(
+                create_project,
+                "bootstrap" if data.is_bootstrap else "simple",
+                {"nonebot": context.variables},
+                str(base_project_dir.absolute()),
+            )
+        except OutputDirExistsException:
+            # Retry flow: keep going when the previous failed run already generated files.
+            if (project_dir / "pyproject.toml").is_file():
+                await log.add_log(
+                    CustomLog(message=f"Project directory exists, reuse: {project_dir}")
+                )
+                return True
+            if _reset_failed_project_dir(project_dir, base_project_dir):
+                await log.add_log(
+                    CustomLog(
+                        message=f"Found incomplete project directory, cleaned and retry: {project_dir}"
+                    )
+                )
+                await asyncio.to_thread(
+                    create_project,
+                    "bootstrap" if data.is_bootstrap else "simple",
+                    {"nonebot": context.variables},
+                    str(base_project_dir.absolute()),
+                )
+                return True
+            raise
+        return True
+
+    process.add(generate_project)
     process.add(log.add_log, CustomLog(message="Finished generate."))
 
     process.add(log.add_log, CustomLog(message="Initialization dependencies..."))
@@ -106,11 +272,19 @@ def create_nonebot_project(data: CreateProjectData) -> str:
             ModuleInfo.parse_obj(adapter.dict()) for adapter in data.adapters
         ]
         _drivers: List[ModuleInfo] = [
-            ModuleInfo.parse_obj(driver.dict()) for driver in data.drivers
+            ModuleInfo.parse_obj(driver.dict()) for driver in sorted_drivers
         ]
 
         project_id = generate_complexity_string(6)
         manager = NoneBotProjectManager(project_id=project_id)
+        env_file = project_dir / ".env"
+        if not env_file.exists():
+            env_file.write_text(str(), encoding="utf-8")
+        set_key(
+            env_file,
+            "DRIVER",
+            manager._build_driver_expr([driver.module_name for driver in _drivers]),
+        )
         await manager.add_project(
             project_name=project_name,
             project_dir=project_dir,
@@ -133,10 +307,16 @@ def create_nonebot_project(data: CreateProjectData) -> str:
 
 
 async def add_nonebot_project(data: AddProjectData) -> str:
-    project_name = data.project_name.replace(" ", "-")
+    project_name = normalize_project_name(data.project_name)
+    ensure_project_name_is_unique(project_name)
     project_dir = Path(data.project_dir)
     if not project_dir.is_dir():
         raise ProjectDirIsNotDir()
+    ensure_project_dir_is_unique(project_dir)
+
+    current_env = resolve_project_use_env(project_dir)
+    configured_port = get_project_env_port(project_dir, current_env)
+    ensure_project_port_is_unique(configured_port)
 
     store_plugin_data = get_store_items(ModuleType.PLUGIN, is_search=False)
     store_adapter_data = get_store_items(ModuleType.ADAPTER, is_search=False)

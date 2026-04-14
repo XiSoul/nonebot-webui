@@ -9,7 +9,7 @@ from nb_cli_plugin_webui.i18n import _
 from nb_cli_plugin_webui.app.config import CONFIG_FILE_PATH, Config
 from nb_cli_plugin_webui.app.utils.string_utils import (
     check_string_complexity,
-    generate_complexity_string,
+    generate_access_token,
 )
 
 conf = Config
@@ -58,7 +58,7 @@ async def reset():
     if await ConfirmPrompt(_("Generate a new access token?")).prompt_async(
         style=CLI_DEFAULT_STYLE
     ):
-        token = generate_complexity_string(use_digits=True, use_punctuation=True)
+        token = generate_access_token()
     else:
         while True:
             token = await InputPrompt(_("Please enter new access token:")).prompt_async(

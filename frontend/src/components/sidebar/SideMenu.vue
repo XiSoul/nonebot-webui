@@ -31,7 +31,7 @@ const recordView = (route: NavItem) => {
         }"
         @click="customStore.toggleMenuShow()"
       >
-        <span class="material-symbols-outlined">{{ route.googleIcon }}</span>
+        <span v-if="route.googleIcon" class="material-symbols-outlined">{{ route.googleIcon }}</span>
         <span :class="{ 'block lg:hidden': customStore.menuMinify }">{{ route.name }}</span>
       </RouterLink>
     </li>

@@ -1,5 +1,6 @@
 import re
 import random
+import secrets
 import string
 
 from nb_cli_plugin_webui.i18n import _
@@ -7,6 +8,9 @@ from nb_cli_plugin_webui.i18n import _
 
 class TokenComplexityError(Exception):
     """token complexity error."""
+
+
+ACCESS_TOKEN_SPECIALS = "!@#$%^&*()-_=+"
 
 
 def filling_str(text: str, target_length: int) -> str:
@@ -30,8 +34,8 @@ def generate_complexity_string(
 
 
 def check_string_complexity(token: str) -> None:
-    if len(token) < 12:
-        raise TokenComplexityError(_("Token should be at least 12 characters long."))
+    if len(token) < 10:
+        raise TokenComplexityError(_("Token should be at least 10 characters long."))
 
     if not re.search(r"\d", token):
         raise TokenComplexityError(_("Token should contain at least one digit."))
@@ -47,6 +51,18 @@ def check_string_complexity(token: str) -> None:
         raise TokenComplexityError(
             _("Token should contain at least one special character.")
         )
+
+
+def generate_access_token(length: int = 20) -> str:
+    alphabet = string.ascii_letters + string.digits + ACCESS_TOKEN_SPECIALS
+
+    while True:
+        token = str().join(secrets.choice(alphabet) for _ in range(length))
+        try:
+            check_string_complexity(token)
+        except TokenComplexityError:
+            continue
+        return token
 
 
 def decode_parse(data: bytes) -> str:

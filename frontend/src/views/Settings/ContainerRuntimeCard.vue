@@ -3,17 +3,14 @@ import { computed, onMounted, ref } from 'vue'
 import { useToastStore } from '@/stores'
 import {
   applyContainerRuntimeProfile,
-  benchmarkContainerRuntimePresets,
   deleteContainerRuntimeProfile,
-  getContainerRuntimeSettings,
   getContainerRuntimeProfiles,
+  getContainerRuntimeSettings,
   saveContainerRuntimeProfile,
   testContainerRuntimeSettings,
   updateContainerRuntimeSettings,
   type ContainerRuntimeConnectivityItem,
   type ContainerRuntimeProfile,
-  type ContainerRuntimePresetBenchmarkItem,
-  type ContainerRuntimeTestMode,
   type ContainerRuntimeSettings
 } from './container-client'
 
@@ -22,23 +19,21 @@ const toast = useToastStore()
 const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
-const benchmarking = ref(false)
-const prechecking = ref(false)
 const profileSaving = ref(false)
 const profileApplying = ref(false)
 const profileDeleting = ref(false)
 const isDocker = ref(false)
 const currentPreset = ref('custom')
-const testMode = ref<ContainerRuntimeTestMode>('quick')
 const newProfileName = ref('')
 const selectedProfileName = ref('')
-
 const testResults = ref<ContainerRuntimeConnectivityItem[]>([])
 const testAllPassed = ref<boolean | null>(null)
-const benchmarkResults = ref<ContainerRuntimePresetBenchmarkItem[]>([])
 const profiles = ref<ContainerRuntimeProfile[]>([])
 
-const form = ref<Omit<ContainerRuntimeSettings, 'is_docker'>>({
+type RuntimeForm = Omit<ContainerRuntimeSettings, 'is_docker'>
+
+const createEmptyForm = (): RuntimeForm => ({
+  proxy_url: '',
   http_proxy: '',
   https_proxy: '',
   all_proxy: '',
@@ -46,7 +41,28 @@ const form = ref<Omit<ContainerRuntimeSettings, 'is_docker'>>({
   debian_mirror: '',
   pip_index_url: '',
   pip_extra_index_url: '',
-  pip_trusted_host: ''
+  pip_trusted_host: '',
+  github_proxy_base_url: '',
+  bot_http_proxy: '',
+  bot_https_proxy: '',
+  bot_all_proxy: '',
+  bot_no_proxy: '',
+  bot_proxy_protocol: 'http',
+  bot_proxy_host: '',
+  bot_proxy_port: '',
+  bot_proxy_username: '',
+  bot_proxy_password: '',
+  bot_proxy_apply_target: 'http_https',
+  bot_proxy_instances: ''
+})
+
+const form = ref<RuntimeForm>(createEmptyForm())
+
+const buildSubmitPayload = (): RuntimeForm => ({
+  ...form.value,
+  http_proxy: '',
+  https_proxy: '',
+  all_proxy: ''
 })
 
 type SourcePreset = {
@@ -60,48 +76,44 @@ type SourcePreset = {
 const presets: SourcePreset[] = [
   {
     id: 'official',
-    name: 'Official',
+    name: '官方源',
     debian_mirror: '',
     pip_index_url: 'https://pypi.org/simple',
     pip_trusted_host: 'pypi.org files.pythonhosted.org'
   },
   {
     id: 'tuna',
-    name: 'Tsinghua TUNA',
+    name: '清华 TUNA',
     debian_mirror: 'https://mirrors.tuna.tsinghua.edu.cn',
     pip_index_url: 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple',
     pip_trusted_host: 'mirrors.tuna.tsinghua.edu.cn'
   },
   {
     id: 'ustc',
-    name: 'USTC',
+    name: '中科大',
     debian_mirror: 'https://mirrors.ustc.edu.cn',
     pip_index_url: 'https://mirrors.ustc.edu.cn/pypi/web/simple',
     pip_trusted_host: 'mirrors.ustc.edu.cn'
   },
   {
     id: 'aliyun',
-    name: 'Aliyun',
+    name: '阿里云',
     debian_mirror: 'https://mirrors.aliyun.com',
     pip_index_url: 'https://mirrors.aliyun.com/pypi/simple',
     pip_trusted_host: 'mirrors.aliyun.com'
   },
   {
     id: 'huawei',
-    name: 'Huawei',
+    name: '华为云',
     debian_mirror: 'https://repo.huaweicloud.com',
     pip_index_url: 'https://repo.huaweicloud.com/repository/pypi/simple',
     pip_trusted_host: 'repo.huaweicloud.com'
   }
 ]
 
-const resetTestResult = () => {
+const resetTestResults = () => {
   testResults.value = []
   testAllPassed.value = null
-}
-
-const resetBenchmarkResult = () => {
-  benchmarkResults.value = []
 }
 
 const applyPresetById = (presetId: string) => {
@@ -113,141 +125,55 @@ const applyPresetById = (presetId: string) => {
   form.value.pip_extra_index_url = ''
   form.value.pip_trusted_host = preset.pip_trusted_host
   currentPreset.value = presetId
-  resetTestResult()
-  resetBenchmarkResult()
+  resetTestResults()
 }
 
 const applyPreset = () => {
   if (currentPreset.value === 'custom') return
   applyPresetById(currentPreset.value)
   const preset = presets.find((item) => item.id === currentPreset.value)
-  toast.add('success', `Preset applied: ${preset?.name ?? currentPreset.value}`, '', 3000)
+  toast.add('success', `已应用预设：${preset?.name ?? currentPreset.value}`, '', 3000)
 }
 
-const clearAll = () => {
-  form.value = {
-    http_proxy: '',
-    https_proxy: '',
-    all_proxy: '',
-    no_proxy: '',
-    debian_mirror: '',
-    pip_index_url: '',
-    pip_extra_index_url: '',
-    pip_trusted_host: ''
-  }
+const clearVisibleFields = () => {
+  form.value.proxy_url = ''
+  form.value.http_proxy = ''
+  form.value.https_proxy = ''
+  form.value.all_proxy = ''
+  form.value.no_proxy = ''
+  form.value.debian_mirror = ''
+  form.value.pip_index_url = ''
+  form.value.pip_extra_index_url = ''
+  form.value.pip_trusted_host = ''
+  form.value.github_proxy_base_url = ''
   currentPreset.value = 'custom'
-  resetTestResult()
-  resetBenchmarkResult()
+  resetTestResults()
 }
 
-const normalizeProfileName = (name: string) => name.trim()
+const githubProxyPreview = computed(() => {
+  const base = form.value.github_proxy_base_url.trim().replace(/\/+$/, '')
+  if (!base) return ''
+  return `${base}/https://github.com/nonebot/nonebot2`
+})
+
+const testSummaryClass = computed(() => {
+  if (testAllPassed.value === null) return 'badge-ghost'
+  return testAllPassed.value ? 'badge-success' : 'badge-warning'
+})
+
+const hasProfileSelection = computed(() => selectedProfileName.value.trim().length > 0)
 
 const loadProfiles = async () => {
   const { data, error } = await getContainerRuntimeProfiles()
   if (error) {
-    toast.add('error', `Failed to load profiles: ${error}`, '', 5000)
+    toast.add('error', `加载全局代理档案失败：${error}`, '', 5000)
     return
   }
 
-  const nextProfiles = data ?? []
-  profiles.value = nextProfiles
-
-  if (!nextProfiles.find((item) => item.name === selectedProfileName.value)) {
+  profiles.value = data ?? []
+  if (!profiles.value.find((item) => item.name === selectedProfileName.value)) {
     selectedProfileName.value = ''
   }
-}
-
-const applyProfileToForm = (profile: ContainerRuntimeProfile) => {
-  form.value = {
-    http_proxy: profile.http_proxy,
-    https_proxy: profile.https_proxy,
-    all_proxy: profile.all_proxy,
-    no_proxy: profile.no_proxy,
-    debian_mirror: profile.debian_mirror,
-    pip_index_url: profile.pip_index_url,
-    pip_extra_index_url: profile.pip_extra_index_url,
-    pip_trusted_host: profile.pip_trusted_host
-  }
-  currentPreset.value = 'custom'
-  resetTestResult()
-  resetBenchmarkResult()
-}
-
-const loadSelectedProfileToForm = () => {
-  const profile = profiles.value.find((item) => item.name === selectedProfileName.value)
-  if (!profile) {
-    toast.add('warning', 'Please select a profile first.', '', 3000)
-    return
-  }
-  applyProfileToForm(profile)
-  toast.add('success', `Profile loaded: ${profile.name}`, '', 3000)
-}
-
-const saveCurrentAsProfile = async () => {
-  const name = normalizeProfileName(newProfileName.value)
-  if (!name) {
-    toast.add('warning', 'Please enter a profile name.', '', 3000)
-    return
-  }
-
-  profileSaving.value = true
-  const { error } = await saveContainerRuntimeProfile(name, form.value)
-  profileSaving.value = false
-
-  if (error) {
-    toast.add('error', `Save profile failed: ${error}`, '', 5000)
-    return
-  }
-
-  newProfileName.value = ''
-  selectedProfileName.value = name
-  await loadProfiles()
-  toast.add('success', `Profile saved: ${name}`, '', 3000)
-}
-
-const applySelectedProfile = async () => {
-  const name = normalizeProfileName(selectedProfileName.value)
-  if (!name) {
-    toast.add('warning', 'Please select a profile first.', '', 3000)
-    return
-  }
-
-  profileApplying.value = true
-  const { error } = await applyContainerRuntimeProfile(name)
-  profileApplying.value = false
-
-  if (error) {
-    toast.add('error', `Apply profile failed: ${error}`, '', 5000)
-    return
-  }
-
-  await loadSettings()
-  await loadProfiles()
-  toast.add('success', `Profile applied: ${name}`, '', 4000)
-}
-
-const deleteSelectedProfile = async () => {
-  const name = normalizeProfileName(selectedProfileName.value)
-  if (!name) {
-    toast.add('warning', 'Please select a profile first.', '', 3000)
-    return
-  }
-
-  const confirmed = window.confirm(`Delete profile "${name}"?`)
-  if (!confirmed) return
-
-  profileDeleting.value = true
-  const { error } = await deleteContainerRuntimeProfile(name)
-  profileDeleting.value = false
-
-  if (error) {
-    toast.add('error', `Delete profile failed: ${error}`, '', 5000)
-    return
-  }
-
-  selectedProfileName.value = ''
-  await loadProfiles()
-  toast.add('success', `Profile deleted: ${name}`, '', 3000)
 }
 
 const loadSettings = async () => {
@@ -256,13 +182,14 @@ const loadSettings = async () => {
   loading.value = false
 
   if (error) {
-    toast.add('error', `Failed to load container settings: ${error}`, '', 5000)
+    toast.add('error', `加载全局代理失败：${error}`, '', 5000)
     return
   }
 
   if (!data) return
   isDocker.value = data.is_docker
   form.value = {
+    proxy_url: data.proxy_url,
     http_proxy: data.http_proxy,
     https_proxy: data.https_proxy,
     all_proxy: data.all_proxy,
@@ -270,262 +197,257 @@ const loadSettings = async () => {
     debian_mirror: data.debian_mirror,
     pip_index_url: data.pip_index_url,
     pip_extra_index_url: data.pip_extra_index_url,
-    pip_trusted_host: data.pip_trusted_host
+    pip_trusted_host: data.pip_trusted_host,
+    github_proxy_base_url: data.github_proxy_base_url,
+    bot_http_proxy: data.bot_http_proxy,
+    bot_https_proxy: data.bot_https_proxy,
+    bot_all_proxy: data.bot_all_proxy,
+    bot_no_proxy: data.bot_no_proxy,
+    bot_proxy_protocol: data.bot_proxy_protocol,
+    bot_proxy_host: data.bot_proxy_host,
+    bot_proxy_port: data.bot_proxy_port,
+    bot_proxy_username: data.bot_proxy_username,
+    bot_proxy_password: data.bot_proxy_password,
+    bot_proxy_apply_target: data.bot_proxy_apply_target,
+    bot_proxy_instances: data.bot_proxy_instances ?? ''
   }
-  resetTestResult()
-  resetBenchmarkResult()
+  resetTestResults()
 }
 
 const saveSettings = async () => {
-  prechecking.value = true
-  const check = await testContainerRuntimeSettings(form.value, 'quick')
-  prechecking.value = false
-  if (check.error) {
-    toast.add('error', `Pre-check failed: ${check.error}`, '', 5000)
-    return false
-  }
-
-  if (check.data) {
-    testResults.value = check.data.results
-    testAllPassed.value = check.data.ok
-
-    const failedItems = check.data.results.filter((item) => !item.ok && !item.skipped)
-    if (failedItems.length > 0) {
-      const failedNames = failedItems.map((item) => item.name).join(', ')
-      const confirmed = window.confirm(
-        `Quick connectivity check failed (${failedNames}). Save and apply anyway?`
-      )
-      if (!confirmed) {
-        toast.add('warning', 'Save cancelled by user.', '', 3000)
-        return false
-      }
-    }
-  }
-
   saving.value = true
-  const { error } = await updateContainerRuntimeSettings(form.value)
+  const { error } = await updateContainerRuntimeSettings(buildSubmitPayload())
   saving.value = false
 
   if (error) {
-    toast.add('error', `Save failed: ${error}`, '', 5000)
-    return false
+    toast.add('error', `保存全局代理失败：${error}`, '', 5000)
+    return
   }
 
-  toast.add('success', 'Saved and applied.', '', 5000)
-  return true
-}
-
-const rollbackOfficial = async () => {
-  applyPresetById('official')
-  const ok = await saveSettings()
-  if (ok) toast.add('success', 'Rolled back to official source.', '', 4000)
+  toast.add('success', '全局代理已保存并生效', '', 4000)
 }
 
 const runConnectivityTest = async () => {
   testing.value = true
-  const { data, error } = await testContainerRuntimeSettings(form.value, testMode.value)
+  const { data, error } = await testContainerRuntimeSettings(buildSubmitPayload(), 'quick')
   testing.value = false
 
   if (error) {
-    toast.add('error', `Connectivity test failed: ${error}`, '', 5000)
+    toast.add('error', `连通性测试失败：${error}`, '', 5000)
     return
   }
 
   if (!data) return
   testResults.value = data.results
   testAllPassed.value = data.ok
-
-  if (data.results.length === 0) {
-    toast.add('warning', 'No mirror targets to test.', '', 3000)
-  } else if (data.ok) {
-    toast.add('success', 'All connectivity checks passed.', '', 3000)
-  } else {
-    toast.add('warning', 'Some connectivity checks failed.', '', 5000)
-  }
+  toast.add(
+    data.ok ? 'success' : 'warning',
+    data.ok ? '连通性测试通过' : '连通性测试存在失败项',
+    '',
+    4000
+  )
 }
 
-const runPresetBenchmark = async () => {
-  benchmarking.value = true
-  const { data, error } = await benchmarkContainerRuntimePresets({
-    http_proxy: form.value.http_proxy,
-    https_proxy: form.value.https_proxy,
-    all_proxy: form.value.all_proxy,
-    no_proxy: form.value.no_proxy
-  })
-  benchmarking.value = false
+const saveCurrentAsProfile = async () => {
+  const name = newProfileName.value.trim()
+  if (!name) {
+    toast.add('warning', '请先填写档案名称', '', 3000)
+    return
+  }
+
+  profileSaving.value = true
+  const { error } = await saveContainerRuntimeProfile(name, buildSubmitPayload())
+  profileSaving.value = false
 
   if (error) {
-    toast.add('error', `Preset benchmark failed: ${error}`, '', 5000)
+    toast.add('error', `保存档案失败：${error}`, '', 5000)
     return
   }
 
-  if (!data) return
-  benchmarkResults.value = data.results
-
-  const best = data.results.find((item) => item.ok)
-  if (best) {
-    toast.add('success', `Best preset: ${best.preset_name}`, '', 3000)
-  } else {
-    toast.add('warning', 'No available preset passed benchmark.', '', 4000)
-  }
+  newProfileName.value = ''
+  selectedProfileName.value = name
+  await loadProfiles()
+  toast.add('success', `已保存档案：${name}`, '', 3000)
 }
 
-const applyBenchmarkPreset = (presetId: string) => {
-  applyPresetById(presetId)
-  const preset = presets.find((item) => item.id === presetId)
-  toast.add('success', `Preset selected from benchmark: ${preset?.name ?? presetId}`, '', 3000)
-}
-
-const bestBenchmarkPreset = computed(() => {
-  return benchmarkResults.value.find((item) => item.ok)
-})
-
-const applyBestBenchmarkPresetAndSave = async () => {
-  const best = bestBenchmarkPreset.value
-  if (!best) {
-    toast.add('warning', 'No available benchmark result to apply.', '', 3000)
+const loadSelectedProfileToForm = () => {
+  const profile = profiles.value.find((item) => item.name === selectedProfileName.value)
+  if (!profile) {
+    toast.add('warning', '请先选择档案', '', 3000)
     return
   }
-  applyPresetById(best.preset_id)
-  const ok = await saveSettings()
-  if (ok) {
-    toast.add('success', `Best preset applied: ${best.preset_name}`, '', 4000)
-  }
+
+  form.value = { ...profile }
+  currentPreset.value = 'custom'
+  resetTestResults()
+  toast.add('success', `已加载档案：${profile.name}`, '', 3000)
 }
 
-const testSummaryClass = computed(() => {
-  if (testAllPassed.value === null) return 'badge-ghost'
-  return testAllPassed.value ? 'badge-success' : 'badge-warning'
-})
+const applySelectedProfile = async () => {
+  const name = selectedProfileName.value.trim()
+  if (!name) {
+    toast.add('warning', '请先选择档案', '', 3000)
+    return
+  }
 
-const hasProfileSelection = computed(() => {
-  return normalizeProfileName(selectedProfileName.value).length > 0
-})
+  profileApplying.value = true
+  const { error } = await applyContainerRuntimeProfile(name)
+  profileApplying.value = false
 
-const loadAllData = async () => {
+  if (error) {
+    toast.add('error', `应用档案失败：${error}`, '', 5000)
+    return
+  }
+
+  await loadSettings()
+  await loadProfiles()
+  toast.add('success', `已应用档案：${name}`, '', 3000)
+}
+
+const deleteSelectedProfile = async () => {
+  const name = selectedProfileName.value.trim()
+  if (!name) {
+    toast.add('warning', '请先选择档案', '', 3000)
+    return
+  }
+
+  if (!window.confirm(`确认删除档案「${name}」吗？`)) return
+
+  profileDeleting.value = true
+  const { error } = await deleteContainerRuntimeProfile(name)
+  profileDeleting.value = false
+
+  if (error) {
+    toast.add('error', `删除档案失败：${error}`, '', 5000)
+    return
+  }
+
+  selectedProfileName.value = ''
+  await loadProfiles()
+  toast.add('success', `已删除档案：${name}`, '', 3000)
+}
+
+onMounted(async () => {
   await Promise.all([loadSettings(), loadProfiles()])
-}
-
-onMounted(loadAllData)
+})
 </script>
 
 <template>
   <div class="w-full p-6 bg-base-200 rounded-box flex flex-col gap-4">
     <div class="flex flex-col gap-2">
-      <h2 class="text-xl font-semibold">Container Proxy And Mirrors</h2>
+      <h2 class="text-xl font-semibold">全局代理与镜像源</h2>
       <div class="text-sm opacity-70">
-        Configure proxy, Debian/APT mirror and pip source for Docker runtime.
+        这里用于配置 Docker 运行环境代理、Linux 镜像源、pip 源，以及 GitHub 链接拼接式加速地址。
       </div>
-      <div class="text-xs opacity-60">Runtime: {{ isDocker ? 'Docker' : 'Non-Docker' }}</div>
+      <div class="text-xs opacity-60">当前运行环境：{{ isDocker ? 'Docker' : '非 Docker' }}</div>
       <div class="bg-base-content/10 h-[1px]"></div>
     </div>
 
-    <div v-if="loading" class="text-sm opacity-70">Loading...</div>
+    <div v-if="loading" class="text-sm opacity-70">加载中...</div>
 
     <div v-else class="flex flex-col gap-4">
       <div class="p-3 rounded-lg bg-base-100 flex flex-col md:flex-row gap-2 md:items-center">
-        <span class="text-sm opacity-70 min-w-fit">One Click Preset</span>
+        <span class="text-sm opacity-70 min-w-fit">一键预设</span>
         <select v-model="currentPreset" class="select select-sm select-bordered flex-1">
-          <option value="custom">Custom</option>
+          <option value="custom">自定义</option>
           <option v-for="preset in presets" :key="preset.id" :value="preset.id">
             {{ preset.name }}
           </option>
         </select>
         <button class="btn btn-sm" :disabled="currentPreset === 'custom'" @click="applyPreset">
-          Apply Preset
+          应用预设
         </button>
-        <button class="btn btn-sm btn-ghost" @click="clearAll">Clear</button>
-        <button class="btn btn-sm btn-outline btn-warning" :disabled="saving" @click="rollbackOfficial">
-          Rollback Official
-        </button>
+        <button class="btn btn-sm btn-ghost" @click="clearVisibleFields">清空</button>
       </div>
 
       <div class="p-3 rounded-lg bg-base-100 flex flex-col gap-2">
         <div class="flex flex-col md:flex-row gap-2 md:items-center">
-          <span class="text-sm opacity-70 min-w-fit">Runtime Profile</span>
+          <span class="text-sm opacity-70 min-w-fit">配置档案</span>
           <input
             v-model="newProfileName"
             class="input input-sm input-bordered md:w-64"
-            placeholder="e.g. home-proxy"
+            placeholder="例如：home-proxy"
           />
           <button
             class="btn btn-sm"
             :disabled="profileSaving || profileApplying || profileDeleting"
             @click="saveCurrentAsProfile"
           >
-            {{ profileSaving ? 'Saving...' : 'Save Current As Profile' }}
+            {{ profileSaving ? '保存中...' : '保存当前配置' }}
           </button>
         </div>
 
         <div class="flex flex-col md:flex-row gap-2 md:items-center">
           <select v-model="selectedProfileName" class="select select-sm select-bordered flex-1">
-            <option value="">Select Profile</option>
+            <option value="">选择档案</option>
             <option v-for="profile in profiles" :key="profile.name" :value="profile.name">
               {{ profile.name }}
             </option>
           </select>
-          <button
-            class="btn btn-sm btn-ghost"
-            :disabled="!hasProfileSelection"
-            @click="loadSelectedProfileToForm"
-          >
-            Load To Form
+          <button class="btn btn-sm btn-ghost" :disabled="!hasProfileSelection" @click="loadSelectedProfileToForm">
+            加载到表单
           </button>
           <button
             class="btn btn-sm"
             :disabled="!hasProfileSelection || profileSaving || profileApplying || profileDeleting"
             @click="applySelectedProfile"
           >
-            {{ profileApplying ? 'Applying...' : 'Apply Profile' }}
+            {{ profileApplying ? '应用中...' : '应用档案' }}
           </button>
           <button
             class="btn btn-sm btn-outline btn-error"
             :disabled="!hasProfileSelection || profileSaving || profileApplying || profileDeleting"
             @click="deleteSelectedProfile"
           >
-            {{ profileDeleting ? 'Deleting...' : 'Delete Profile' }}
+            {{ profileDeleting ? '删除中...' : '删除档案' }}
           </button>
         </div>
       </div>
 
-      <div class="text-xs opacity-70">
-        For Linux hosts using host proxy, add
-        <code>--add-host host.docker.internal:host-gateway</code> in docker run.
-      </div>
-
-      <div class="p-3 rounded-lg bg-base-100 flex flex-col md:flex-row gap-2 md:items-center">
-        <span class="text-sm opacity-70 min-w-fit">Test Mode</span>
-        <select v-model="testMode" class="select select-sm select-bordered md:w-60">
-          <option value="quick">Quick (HTTP)</option>
-          <option value="deep">Deep (HTTP + apt/pip)</option>
-        </select>
-        <span class="text-xs opacity-70">
-          Deep mode runs apt and pip command checks in container.
-        </span>
-      </div>
-
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label class="form-control w-full">
-          <div class="label py-1"><span class="label-text">HTTP_PROXY</span></div>
-          <input v-model="form.http_proxy" class="input input-sm input-bordered font-mono" />
+        <label class="form-control w-full md:col-span-2">
+          <div class="label py-1"><span class="label-text">全局代理地址</span></div>
+          <input
+            v-model="form.proxy_url"
+            class="input input-sm input-bordered font-mono"
+            placeholder="例如：http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+          />
+          <div class="label pt-1 pb-0">
+            <span class="label-text-alt opacity-70">
+              一个输入框同时作用于 HTTP/HTTPS；当填写 socks4、socks5、socks5h 时会同时写入 ALL_PROXY。
+            </span>
+          </div>
         </label>
-        <label class="form-control w-full">
-          <div class="label py-1"><span class="label-text">HTTPS_PROXY</span></div>
-          <input v-model="form.https_proxy" class="input input-sm input-bordered font-mono" />
-        </label>
-        <label class="form-control w-full">
-          <div class="label py-1"><span class="label-text">ALL_PROXY</span></div>
-          <input v-model="form.all_proxy" class="input input-sm input-bordered font-mono" />
-        </label>
-        <label class="form-control w-full">
+        <label class="form-control w-full md:col-span-2">
           <div class="label py-1"><span class="label-text">NO_PROXY</span></div>
-          <input v-model="form.no_proxy" class="input input-sm input-bordered font-mono" />
+          <input
+            v-model="form.no_proxy"
+            class="input input-sm input-bordered font-mono"
+            placeholder="127.0.0.1,localhost,.internal"
+          />
         </label>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label class="form-control w-full md:col-span-2">
-          <div class="label py-1"><span class="label-text">Debian/APT Mirror</span></div>
+          <div class="label py-1"><span class="label-text">GitHub 加速代理地址</span></div>
+          <input
+            v-model="form.github_proxy_base_url"
+            class="input input-sm input-bordered font-mono"
+            placeholder="https://github.xisoul.cn"
+          />
+        </label>
+        <div class="w-full md:col-span-2 p-3 rounded-lg bg-base-100 flex flex-col gap-1">
+          <div class="text-sm opacity-80">拼接示例</div>
+          <code class="text-xs break-all">
+            {{ githubProxyPreview || '填写后将按 “代理地址/原始 GitHub 链接” 方式拼接，例如 https://github.xisoul.cn/https://github.com/nonebot/nonebot2' }}
+          </code>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label class="form-control w-full md:col-span-2">
+          <div class="label py-1"><span class="label-text">Debian/APT 镜像源</span></div>
           <input v-model="form.debian_mirror" class="input input-sm input-bordered font-mono" />
         </label>
         <label class="form-control w-full md:col-span-2">
@@ -549,21 +471,11 @@ onMounted(loadAllData)
       </div>
 
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <button class="btn btn-sm" :disabled="benchmarking || prechecking || saving" @click="runPresetBenchmark">
-          {{ benchmarking ? 'Benchmarking...' : 'Benchmark Presets' }}
+        <button class="btn btn-sm" :disabled="testing || saving" @click="runConnectivityTest">
+          {{ testing ? '测试中...' : '连通性测试' }}
         </button>
-        <button
-          class="btn btn-sm btn-outline"
-          :disabled="!bestBenchmarkPreset || saving || prechecking"
-          @click="applyBestBenchmarkPresetAndSave"
-        >
-          Apply Best And Save
-        </button>
-        <button class="btn btn-sm" :disabled="testing || prechecking || saving" @click="runConnectivityTest">
-          {{ testing ? 'Testing...' : 'Connectivity Test' }}
-        </button>
-        <button class="btn btn-sm btn-primary text-base-100" :disabled="saving || prechecking" @click="saveSettings">
-          {{ prechecking ? 'Pre-checking...' : saving ? 'Saving...' : 'Save And Apply' }}
+        <button class="btn btn-sm btn-primary text-base-100" :disabled="saving" @click="saveSettings">
+          {{ saving ? '保存中...' : '保存并应用' }}
         </button>
       </div>
 
@@ -571,19 +483,19 @@ onMounted(loadAllData)
         <span class="badge" :class="testSummaryClass">
           {{ testAllPassed ? 'PASS' : 'PARTIAL FAIL' }}
         </span>
-        <span class="text-xs opacity-70">{{ testResults.length }} checks</span>
+        <span class="text-xs opacity-70">{{ testResults.length }} 项检测</span>
       </div>
 
       <div v-if="testResults.length" class="overflow-x-auto rounded-box border border-base-content/10">
         <table class="table table-xs">
           <thead>
             <tr>
-              <th>Item</th>
-              <th>Status</th>
+              <th>项目</th>
+              <th>状态</th>
               <th>HTTP</th>
-              <th>Latency</th>
-              <th>Target</th>
-              <th>Error</th>
+              <th>延迟</th>
+              <th>目标</th>
+              <th>错误</th>
             </tr>
           </thead>
           <tbody>
@@ -601,50 +513,6 @@ onMounted(loadAllData)
               <td>{{ item.elapsed_ms }}ms</td>
               <td class="font-mono break-all">{{ item.target }}</td>
               <td class="font-mono break-all text-xs">{{ item.error || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div
-        v-if="benchmarkResults.length"
-        class="overflow-x-auto rounded-box border border-base-content/10"
-      >
-        <table class="table table-xs">
-          <thead>
-            <tr>
-              <th>Preset</th>
-              <th>Status</th>
-              <th>Score</th>
-              <th>Debian</th>
-              <th>PIP</th>
-              <th>Error</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in benchmarkResults" :key="item.preset_id">
-              <td class="font-mono">
-                {{ item.preset_name }}
-                <span
-                  v-if="bestBenchmarkPreset && bestBenchmarkPreset.preset_id === item.preset_id"
-                  class="badge badge-xs badge-success ml-1"
-                >
-                  BEST
-                </span>
-              </td>
-              <td>
-                <span class="badge badge-xs" :class="item.ok ? 'badge-success' : 'badge-warning'">
-                  {{ item.ok ? 'OK' : 'FAIL' }}
-                </span>
-              </td>
-              <td>{{ item.score_ms }}ms</td>
-              <td>{{ item.debian_elapsed_ms }}ms</td>
-              <td>{{ item.pip_elapsed_ms }}ms</td>
-              <td class="font-mono break-all text-xs">{{ item.error || '-' }}</td>
-              <td>
-                <button class="btn btn-xs" @click="applyBenchmarkPreset(item.preset_id)">Use</button>
-              </td>
             </tr>
           </tbody>
         </table>

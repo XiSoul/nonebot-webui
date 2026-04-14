@@ -121,7 +121,7 @@ jobs:
           touch "/tmp/digests/${{ matrix.python_version }}${{ matrix.python_variant }}/${digest#sha256:}"
 
       - name: 📦️ Upload digest
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: digests
           path: /tmp/digests/*
@@ -145,10 +145,10 @@ jobs:
           - "-slim"
     steps:
       - name: 🛎️ Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 📥 Download digests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: digests
           path: /tmp/digests

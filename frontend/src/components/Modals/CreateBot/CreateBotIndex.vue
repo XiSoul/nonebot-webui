@@ -31,7 +31,7 @@ const steps: StepItem[] = [
   },
   {
     title: '基础信息',
-    pass: () => store.projectName !== '' && store.projectPath !== '',
+    pass: () => store.projectName.trim() !== '' && store.projectPath.trim() !== '',
     component: BotBasic
   },
   {

@@ -14,6 +14,7 @@ from .schemas import ProcessLog
 async def run_asyncio_subprocess(
     *args: Union[str, bytes, "os.PathLike[str]", "os.PathLike[bytes]"],
     cwd: Optional[Path] = None,
+    env: Optional[dict] = None,
     stdin: Optional[Union[IO[Any], int]] = None,
     log_storage: Optional[LogStorage] = None,
 ) -> Tuple[asyncio.subprocess.Process, Optional[LogStorage]]:
@@ -31,6 +32,7 @@ async def run_asyncio_subprocess(
     process = await asyncio.create_subprocess_exec(
         *args,
         cwd=cwd,
+        env=env,
         stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

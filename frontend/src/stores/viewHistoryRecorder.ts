@@ -8,25 +8,38 @@ export const useViewHistoryRecorderStore = defineStore('viewHistoryRecorder', ()
 
   const viewHistoryFromLocalStorage = localStorage.getItem('viewHistory')
   if (viewHistoryFromLocalStorage) {
-    const storedHistory = JSON.parse(viewHistoryFromLocalStorage)
-    viewHistory.value = storedHistory.map((name: string) => {
-      const routeItem = defaultRoutes.find((route) => route.name === name)
-      return routeItem
-    })
+    try {
+      const storedHistory = JSON.parse(viewHistoryFromLocalStorage) as string[]
+      viewHistory.value = storedHistory
+        .map((name: string) =>
+          defaultRoutes.find(
+            (route) => route.routeData.name === name || route.name === name
+          )
+        )
+        .filter((route: NavItem | undefined): route is NavItem => Boolean(route))
+    } catch {
+      localStorage.removeItem('viewHistory')
+    }
   }
 
   const _record = () => {
-    localStorage.setItem('viewHistory', JSON.stringify(viewHistory.value.map((item) => item.name)))
+    localStorage.setItem(
+      'viewHistory',
+      JSON.stringify(viewHistory.value.map((item) => item.routeData.name))
+    )
   }
 
   const _remove = (name: string) => {
-    const data = viewHistory.value.map((item) => item.name)
-    data.filter((item) => item !== name)
-
+    const data = viewHistory.value
+      .filter((item) => item.routeData.name !== name && item.name !== name)
+      .map((item) => item.routeData.name)
     localStorage.setItem('viewHistory', JSON.stringify(data))
   }
 
   const record = (route: NavItem) => {
+    if (viewHistory.value.some((item) => item.routeData.path === route.routeData.path)) {
+      return
+    }
     viewHistory.value.push(route)
     _record()
   }

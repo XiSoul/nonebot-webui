@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ProjectService } from '@/client/api'
+import { getErrorMessage } from '@/client/utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import { ref } from 'vue'
 
@@ -32,7 +33,7 @@ const getDotenvList = async () => {
   })
 
   if (error) {
-    toast.add('error', `获取环境失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `获取环境失败, 原因：${getErrorMessage(error)}`, '', 5000)
   }
 
   if (data) {
@@ -59,7 +60,7 @@ const addEnv = async () => {
   })
 
   if (error) {
-    toast.add('error', `添加环境失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `添加环境失败, 原因：${getErrorMessage(error)}`, '', 5000)
   }
 
   if (data) {
@@ -82,7 +83,7 @@ const removeEnv = async (env: string) => {
   })
 
   if (error) {
-    toast.add('error', `删除环境失败, 原因：${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `删除环境失败, 原因：${getErrorMessage(error)}`, '', 5000)
   }
 
   if (data) {

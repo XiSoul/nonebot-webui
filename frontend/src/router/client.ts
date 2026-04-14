@@ -13,7 +13,6 @@ export interface NavItem {
   routeData: RouteRecordRawRebuild
 }
 
-// WebUI default routes
 export const defaultRoutes: NavItem[] = [
   {
     googleIcon: 'team_dashboard',
@@ -22,6 +21,15 @@ export const defaultRoutes: NavItem[] = [
       path: '/dashboard',
       name: 'Dashboard',
       component: () => import('@/views/Dashboard/DashboardIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'deployed_code',
+    name: '实例选择',
+    routeData: {
+      path: '/instances',
+      name: 'Instances',
+      component: () => import('@/views/Instances/InstanceSelectIndex.vue')
     }
   },
   {
@@ -58,6 +66,60 @@ export const defaultRoutes: NavItem[] = [
       path: '/settings',
       name: 'Settings',
       component: () => import('@/views/Settings/SettingsIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'folder',
+    name: '文件管理',
+    routeData: {
+      path: '/file-manager',
+      name: 'FileManager',
+      component: () => import('@/views/FileManager/FileManagerIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'shield_lock',
+    name: '安全设置',
+    routeData: {
+      path: '/security-settings',
+      name: 'SecuritySettings',
+      component: () => import('@/views/Settings/SecuritySettingsIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'restore_page',
+    name: '备份恢复',
+    routeData: {
+      path: '/backup-restore',
+      name: 'BackupRestore',
+      component: () => import('@/views/Settings/BackupRestoreIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'receipt_long',
+    name: '全局日志',
+    routeData: {
+      path: '/global-logs',
+      name: 'GlobalLogs',
+      component: () => import('@/views/Logs/GlobalLogIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'vpn_key',
+    name: '全局代理',
+    routeData: {
+      path: '/proxy-settings',
+      name: 'ProxySettings',
+      component: () => import('@/views/Settings/ProxySettingsIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'lan',
+    name: '实例代理',
+    routeData: {
+      path: '/instance-proxy',
+      name: 'InstanceProxySettings',
+      component: () => import('@/views/Settings/InstanceProxySettingsIndex.vue')
     }
   }
 ]

@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+import re
 from typing import Any, Dict, List
 
 import tomlkit
@@ -14,7 +16,6 @@ from nb_cli_plugin_webui.app.handlers import get_pkg_version
 from nb_cli_plugin_webui.app.utils.storage import get_data_file
 from nb_cli_plugin_webui.app.utils.openapi import resolve_references
 from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProjectMeta
-
 from .nonebot import (
     get_nonebot_loaded_plugins,
     get_nonebot_plugin_metadata,
@@ -37,6 +38,17 @@ class NoneBotProjectManager:
         "plugin_dirs",
         "use_run_script",
         "run_script_name",
+        "bot_use_global_proxy",
+        "bot_http_proxy",
+        "bot_https_proxy",
+        "bot_all_proxy",
+        "bot_no_proxy",
+        "bot_proxy_protocol",
+        "bot_proxy_host",
+        "bot_proxy_port",
+        "bot_proxy_username",
+        "bot_proxy_password",
+        "bot_proxy_apply_target",
     }
 
     def __init__(self, *, project_id: str) -> None:
@@ -49,13 +61,46 @@ class NoneBotProjectManager:
             self.config_manager = ConfigManager(use_venv=True)
 
     @classmethod
+    def _normalize_project_payload(cls, payload: Any) -> Dict[str, Any]:
+        if payload is None:
+            return {}
+
+        if isinstance(payload, dict):
+            data = payload
+            while (
+                isinstance(data, dict)
+                and set(data.keys()) == {"__root__"}
+                and isinstance(data.get("__root__"), dict)
+            ):
+                data = data["__root__"]
+            return data
+
+        raise ValueError("project data must be a JSON object")
+
+    @classmethod
     def _load(cls) -> NoneBotProjectList:
         try:
-            return NoneBotProjectList.parse_file(PROJECT_DATA_PATH, encoding="utf-8")
+            raw_text = PROJECT_DATA_PATH.read_text(encoding=PROJECT_DATA_ENCODING).strip()
         except FileNotFoundError as err:
             raise err
-        except ValidationError as err:
-            raise err
+
+        if not raw_text:
+            return NoneBotProjectList(__root__={})
+
+        try:
+            raw_payload = json.loads(raw_text)
+        except json.JSONDecodeError as err:
+            raise ValueError(f"invalid project data JSON: {err.msg}") from err
+
+        normalized_payload = cls._normalize_project_payload(raw_payload)
+        project_list = NoneBotProjectList(__root__=normalized_payload)
+
+        if raw_payload != normalized_payload:
+            PROJECT_DATA_PATH.write_text(
+                project_list.json(), encoding=PROJECT_DATA_ENCODING
+            )
+
+        return project_list
 
     @classmethod
     def get_project(cls) -> Dict[str, NoneBotProjectMeta]:
@@ -95,6 +140,30 @@ class NoneBotProjectManager:
             tomlkit.dumps(data), encoding=CONFIG_FILE_ENCODING
         )
 
+    async def sync_from_project_toml(self) -> None:
+        from nb_cli_plugin_webui.app.project.utils import get_nonebot_info_from_toml
+
+        data = self.read()
+        project_detail = get_nonebot_info_from_toml(Path(data.project_dir))
+
+        if project_detail.project_name:
+            data.project_name = project_detail.project_name
+
+        current_adapters = {adapter.module_name: adapter for adapter in data.adapters}
+        adapters: List[ModuleInfo] = []
+        for adapter in project_detail.adapters:
+            module_name = adapter.get("module_name", "unknown")
+            if module_name in current_adapters:
+                adapters.append(current_adapters[module_name].copy(update=adapter))
+                continue
+            adapters.append(ModuleInfo.parse_obj(adapter))
+
+        data.adapters = adapters
+        data.plugin_dirs = project_detail.plugin_dirs
+        data.builtin_plugins = project_detail.builtin_plugins
+        self.store(data)
+        await self.update_plugin_config()
+
     async def add_project(
         self,
         *,
@@ -133,6 +202,36 @@ class NoneBotProjectManager:
             setattr(data, k, v)
             self.store(data)
 
+    @staticmethod
+    def _normalize_driver_name(driver_name: str) -> str:
+        name = (driver_name or "").strip()
+        if not name:
+            return ""
+
+        if name.startswith("nonebot2[") and name.endswith("]"):
+            name = name[len("nonebot2[") : -1]
+        if name.startswith("nonebot.drivers."):
+            name = name[len("nonebot.drivers.") :]
+        if name.startswith("~"):
+            name = name[1:]
+        return name.strip()
+
+    def _build_driver_expr(self, names: List[str]) -> str:
+        normalized = [self._normalize_driver_name(name) for name in names]
+        normalized = [name for name in normalized if name]
+        if not normalized:
+            return ""
+
+        dedup: List[str] = list(dict.fromkeys(normalized))
+        server_candidates = ["fastapi", "quart", "aiohttp", "sanic", "tornado"]
+        mixin_candidates = ["httpx", "websockets"]
+
+        base = next((name for name in dedup if name in server_candidates), dedup[0])
+        mixins = [name for name in dedup if name != base and name in mixin_candidates]
+        remain = [name for name in dedup if name != base and name not in mixins]
+        ordered = [base, *mixins, *remain]
+        return "+".join(f"~{name}" for name in ordered)
+
     def add_adapter(self, adapter: ModuleInfo) -> None:
         self.config_manager.add_adapter(
             CliSimpleInfo(name=adapter.name, module_name=adapter.module_name)
@@ -156,25 +255,40 @@ class NoneBotProjectManager:
         data = self.read()
         config_file = self.config_manager.config_file
 
-        plugins = await get_nonebot_loaded_plugins(
-            config_file, self.config_manager.python_path
-        )
+        try:
+            plugins = await get_nonebot_loaded_plugins(
+                config_file, self.config_manager.python_path
+            )
+        except Exception:
+            plugins = []
         cwd = config_file.parent
 
         data.plugins = list()
         for plugin in plugins:
-            plugin_metadata = await get_nonebot_plugin_metadata(
-                plugin, cwd, self.config_manager.python_path
-            )
-            plugin_config_schema = await get_nonebot_plugin_config_schema(
-                plugin, cwd, self.config_manager.python_path
-            )
+            try:
+                plugin_metadata = await get_nonebot_plugin_metadata(
+                    plugin, cwd, self.config_manager.python_path
+                )
+            except Exception:
+                plugin_metadata = {
+                    "module_name": plugin,
+                    "name": plugin,
+                    "config": {},
+                }
+            try:
+                plugin_config_schema = await get_nonebot_plugin_config_schema(
+                    plugin, cwd, self.config_manager.python_path
+                )
+                plugin_config = resolve_references(plugin_config_schema)
+            except Exception:
+                plugin_config = dict()
 
-            plugin_config = resolve_references(plugin_config_schema)
             plugin_metadata["config"] = plugin_config
-
-            pkg_version = await get_pkg_version(plugin, self.config_manager.python_path)
-            plugin_metadata["version"] = pkg_version
+            try:
+                pkg_version = await get_pkg_version(plugin, self.config_manager.python_path)
+                plugin_metadata["version"] = pkg_version
+            except Exception:
+                plugin_metadata["version"] = "unknown"
 
             metadata = Plugin.parse_obj(plugin_metadata)
             if metadata.module_name == "unknown":
@@ -219,12 +333,11 @@ class NoneBotProjectManager:
         env_path = Path(data.project_dir) / env
         env_data = dotenv_values(env_path)
         raw_drivers = env_data.get("DRIVER")
-        if not raw_drivers:
-            set_key(env_path, "DRIVER", driver.module_name)
-        else:
-            if driver.module_name not in raw_drivers:
-                drivers = raw_drivers + f"+{driver.module_name}"
-                set_key(env_path, "DRIVER", drivers)
+        names: List[str] = []
+        if raw_drivers:
+            names.extend(raw_drivers.split("+"))
+        names.append(driver.module_name)
+        set_key(env_path, "DRIVER", self._build_driver_expr(names))
 
         data.drivers.append(driver)
         self.store(data)
@@ -235,16 +348,13 @@ class NoneBotProjectManager:
         env_path = Path(data.project_dir) / env
         env_data = dotenv_values(env_path)
         raw_drivers = env_data.get("DRIVER")
-        if raw_drivers is None:
+        if not raw_drivers:
             set_key(env_path, "DRIVER", str())
         else:
-            raw_drivers = raw_drivers.split("+")
-            cache_list = raw_drivers[:]
-            for old_driver in cache_list:
-                if driver.module_name == old_driver:
-                    raw_drivers.remove(driver.module_name)
-            divers = "+".join(raw_drivers)
-            set_key(env_path, "DRIVER", divers)
+            current = [self._normalize_driver_name(item) for item in raw_drivers.split("+")]
+            target = self._normalize_driver_name(driver.module_name)
+            current = [item for item in current if item and item != target]
+            set_key(env_path, "DRIVER", self._build_driver_expr(current))
 
         for i in data.drivers:
             if i.module_name == driver.module_name:
@@ -257,4 +367,12 @@ class NoneBotProjectManager:
         env_path = Path(data.project_dir) / env
         if not env_path.is_file():
             env_path.write_text(str(), encoding="utf-8")
-        set_key(env_path, k, v)
+        key = str(k).strip()
+        value = "" if v is None else str(v)
+
+        content = env_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=", re.IGNORECASE)
+        filtered_lines = [line for line in lines if not key_pattern.match(line)]
+        filtered_lines.append(f"{key}={value}")
+        env_path.write_text("\n".join(filtered_lines) + "\n", encoding="utf-8")

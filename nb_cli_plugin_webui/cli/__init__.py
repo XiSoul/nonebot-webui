@@ -11,7 +11,12 @@ from nb_cli.cli import CLI_DEFAULT_STYLE, ClickAliasedGroup, run_sync, run_async
 from nb_cli_plugin_webui.i18n import _
 from nb_cli_plugin_webui.app.application import STATIC_PATH
 from nb_cli_plugin_webui.app.handlers.project import PROJECT_DATA_PATH
-from nb_cli_plugin_webui.app.config import CONFIG_FILE_PATH, Config, generate_config
+from nb_cli_plugin_webui.app.config import (
+    CONFIG_FILE_PATH,
+    Config,
+    ensure_docker_config,
+    generate_config,
+)
 
 from .token import token
 from .config import config
@@ -30,14 +35,24 @@ async def webui(ctx: click.Context):
         )
         return
 
-    if not CONFIG_FILE_PATH.exists():
-        if "WEBUI_BUILD" in os.environ:
+    if "WEBUI_BUILD" in os.environ:
+        generated_token = ensure_docker_config()
+        if generated_token:
+            Config.load(CONFIG_FILE_PATH)
+            click.secho(_("Docker runtime config initialized."), fg="green")
             click.secho(
-                _("Config not found in docker, run `nb ui docker` to fix."),
-                fg="yellow",
+                _("WebUI URL: http://{host}:{port}/").format(
+                    host=Config.host,
+                    port=Config.port,
+                ),
+                fg="green",
             )
-            return
+            click.secho(_("Token: {token}").format(token=generated_token), fg="yellow")
+            click.secho(
+                _("ATTENTION, TOKEN ONLY SHOW ONCE."), fg="red", bold=True
+            )
 
+    if not CONFIG_FILE_PATH.exists():
         if not Config.check_necessary_config():
             await generate_config()
             return

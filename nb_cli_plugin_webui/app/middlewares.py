@@ -8,11 +8,14 @@ from fastapi.security.utils import get_authorization_scheme_param
 from .config import Config
 from .application import app
 from .utils.security import jwt
+from .auth.utils import ensure_login_token_is_active
 
-AUTH_ROUTES = ["/api"]
+AUTH_ROUTES = ["/api", "/v1"]
 PASS_PATHS = [
     "/api/v1/auth/login",
     "/api/v1/auth/verify",
+    "/v1/auth/login",
+    "/v1/auth/verify",
     "/api/docs",
     "/api/docs/openapi.json",
 ]
@@ -32,6 +35,7 @@ async def auth(request: Request, call_next: RequestHandler) -> Response:
     if any(request_path.startswith(route) for route in AUTH_ROUTES):
         secret_key = Config.secret_key.get_secret_value()
         try:
+            ensure_login_token_is_active()
             jwt.verify_and_read_jwt(param, secret_key)
         except Exception as err:
             return JSONResponse(

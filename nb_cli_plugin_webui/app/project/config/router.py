@@ -1,10 +1,14 @@
 import re
 import ast
 import json
+from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import Depends, APIRouter
+from fastapi import Body, Depends, APIRouter
+from dotenv import dotenv_values
+import tomlkit
+from nb_cli.config.parser import CONFIG_FILE_ENCODING
 
 from nb_cli_plugin_webui.app.logging import logger as log
 from nb_cli_plugin_webui.app.models.types import ModuleType
@@ -18,6 +22,13 @@ from nb_cli_plugin_webui.app.handlers import (
 
 from .utils import config_child_parser
 from ..dependencies import get_nonebot_project_manager
+from ..service import (
+    ensure_project_name_is_unique,
+    ensure_project_port_is_unique,
+    normalize_project_name,
+    parse_project_port,
+)
+from ...process.service import restart_nonebot_project_if_running
 from .exceptions import (
     EnvExists,
     EnvNotFound,
@@ -44,7 +55,7 @@ async def _get_project_env_list(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[List[str]]:
     """
-    - 获取 NoneBot 实例中的环境文件列表
+    - 鑾峰彇 NoneBot 瀹炰緥涓殑鐜鏂囦欢鍒楄〃
     """
     project_meta = project.read()
     project_dir = Path(project_meta.project_dir)
@@ -62,7 +73,7 @@ async def _create_project_env(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 创建 NoneBot 实例中的环境文件
+    - 鍒涘缓 NoneBot 瀹炰緥涓殑鐜鏂囦欢
     """
     project_meta = project.read()
     project_dir = Path(project_meta.project_dir)
@@ -80,7 +91,7 @@ async def _delete_project_env(
     env: str, project: NoneBotProjectManager = Depends(get_nonebot_project_manager)
 ) -> GenericResponse[str]:
     """
-    - 删除 NoneBot 实例中的环境文件
+    - 鍒犻櫎 NoneBot 瀹炰緥涓殑鐜鏂囦欢
     """
     if env == ".env":
         raise BaseEnvCannotBeDeleted()
@@ -100,7 +111,7 @@ async def _use_project_env(
     env: str, project: NoneBotProjectManager = Depends(get_nonebot_project_manager)
 ) -> GenericResponse[str]:
     """
-    - 切换 NoneBot 实例所应用的环境文件
+    - 鍒囨崲 NoneBot 瀹炰緥鎵€搴旂敤鐨勭幆澧冩枃浠?
     """
     project_meta = project.read()
     project_dir = Path(project_meta.project_dir)
@@ -126,7 +137,7 @@ async def _get_project_meta_config(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> ModuleConfigResponse:
     """
-    - 获取 NoneBot 实例在 .toml 中的配置信息
+    - 鑾峰彇 NoneBot 瀹炰緥鍦?.toml 涓殑閰嶇疆淇℃伅
     """
     project_meta = project.read()
     config_props = NoneBotProjectMeta.schema()["properties"]
@@ -155,7 +166,7 @@ async def _get_project_nonebot_config(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> ModuleConfigResponse:
     """
-    - 获取 NoneBot 实例配置信息
+    - 鑾峰彇 NoneBot 瀹炰緥閰嶇疆淇℃伅
     """
     project_meta = project.read()
 
@@ -169,6 +180,12 @@ async def _get_project_nonebot_config(
     except Exception as err:
         log.error(f"Get nonebot config failed: {err}")
         raise GetConfigError()
+
+    if not isinstance(config, dict):
+        config = {}
+    if not isinstance(config_schema, dict):
+        config_schema = {}
+    config_schema.setdefault("properties", {})
 
     config_schema = resolve_references(config_schema)
     for i in config:
@@ -199,7 +216,7 @@ async def _get_project_nonebot_plugin_config(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> ModuleConfigResponse:
     """
-    - 获取 NoneBot 实例中所有 NoneBot 插件设置信息
+    - 鑾峰彇 NoneBot 瀹炰緥涓墍鏈?NoneBot 鎻掍欢璁剧疆淇℃伅
     """
     project_meta = project.read()
 
@@ -210,6 +227,9 @@ async def _get_project_nonebot_plugin_config(
     except Exception as err:
         log.error(f"Get nonebot config failed: {err}")
         raise GetConfigError()
+
+    if not isinstance(config, dict):
+        config = {}
 
     plugin_list = project_meta.plugins
     result: List[ModuleConfigFather] = list()
@@ -257,9 +277,9 @@ async def _update_project_config(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 根据模块类型及环境更新配置信息
-    - 说明:
-        * `module_type` 仅作 WebUI 更新自身存储的实例信息，不会影响实例本体
+    - 鏍规嵁妯″潡绫诲瀷鍙婄幆澧冩洿鏂伴厤缃俊鎭?
+    - 璇存槑:
+        * `module_type` 浠呬綔 WebUI 鏇存柊鑷韩瀛樺偍鐨勫疄渚嬩俊鎭紝涓嶄細褰卞搷瀹炰緥鏈綋
     """
     project_meta = project.read()
     target_config = data.k.split(":")[-1]
@@ -267,6 +287,12 @@ async def _update_project_config(
     if module_type == ConfigType.TOML:
         if data.conf_type == "boolean":
             setattr(data, "v", bool(data.v))
+        elif target_config == "project_name":
+            next_project_name = normalize_project_name(str(data.v))
+            ensure_project_name_is_unique(
+                next_project_name, exclude_project_id=project_meta.project_id
+            )
+            data.v = next_project_name
 
         project.modify_meta(target_config, data.v)
 
@@ -276,10 +302,17 @@ async def _update_project_config(
         )
         table[data.k] = data.v
         project.write_toml_data(toml_data)
+        await restart_nonebot_project_if_running(project)
 
         return GenericResponse(detail="success")
 
     def modify_config():
+        if target_config == "PORT":
+            port = parse_project_port(data.v)
+            if not port:
+                raise ConfigParseError()
+            ensure_project_port_is_unique(port, exclude_project_id=project_meta.project_id)
+
         data.v = str(data.v)
         if data.conf_type in {"object", "array", "boolean"}:
             try:
@@ -313,6 +346,7 @@ async def _update_project_config(
     for f in project_dir.iterdir():
         if data.env == f.name:
             modify_config()
+            await restart_nonebot_project_if_running(project)
             return GenericResponse(detail="success")
 
     raise EnvNotFound()
@@ -324,7 +358,7 @@ async def get_dotenv_file(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 获取环境文件内容
+    - 鑾峰彇鐜鏂囦欢鍐呭
     """
     project_meta = project.read()
     project_dir = Path(project_meta.project_dir)
@@ -337,19 +371,80 @@ async def get_dotenv_file(
 
 @router.put("/dotenv", response_model=GenericResponse[str])
 async def update_dotenv_file(
-    env: str,
-    data: str,
+    env: str = "",
+    data: str = "",
+    payload: Dict[str, str] = Body(default={}),
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 更新环境文件内容
+    - 鏇存柊鐜鏂囦欢鍐呭
     """
+    env = env or payload.get("env", "")
+    data = data or payload.get("data", "") or payload.get("detail", "")
+    if not env:
+        raise EnvNotFound()
+
     project_meta = project.read()
     project_dir = Path(project_meta.project_dir)
     env_file = project_dir / env
     if not env_file.exists():
         raise EnvNotFound()
 
+    parsed_env = dotenv_values(stream=StringIO(data))
+    port = parse_project_port(parsed_env.get("PORT"))
+    if port:
+        ensure_project_port_is_unique(port, exclude_project_id=project_meta.project_id)
+
     env_file.write_text(data, encoding="utf-8")
+    await restart_nonebot_project_if_running(project)
 
     return GenericResponse(detail="success")
+
+
+@router.get("/pyproject", response_model=GenericResponse[str])
+async def get_pyproject_file(
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    project.read()
+    pyproject_file = project.config_manager.config_file
+    if not pyproject_file.exists():
+        raise ConfigNotFound()
+
+    return GenericResponse(
+        detail=pyproject_file.read_text(encoding=CONFIG_FILE_ENCODING)
+    )
+
+
+@router.put("/pyproject", response_model=GenericResponse[str])
+async def update_pyproject_file(
+    data: str = "",
+    payload: Dict[str, str] = Body(default={}),
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    data = data or payload.get("data", "") or payload.get("detail", "")
+    if not data:
+        raise ConfigParseError()
+    project_meta = project.read()
+    pyproject_file = project.config_manager.config_file
+    if not pyproject_file.exists():
+        raise ConfigNotFound()
+
+    try:
+        toml_data = tomlkit.parse(data)
+    except Exception:
+        raise ConfigParseError()
+
+    next_project_name = str(toml_data.get("project", {}).get("name", "")).strip()
+    if next_project_name:
+        ensure_project_name_is_unique(
+            next_project_name, exclude_project_id=project_meta.project_id
+        )
+
+    pyproject_file.write_text(data, encoding=CONFIG_FILE_ENCODING)
+    await project.sync_from_project_toml()
+    await restart_nonebot_project_if_running(project)
+
+    return GenericResponse(detail="success")
+
+
+

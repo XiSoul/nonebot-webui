@@ -4,6 +4,7 @@ import router from '@/router'
 import { useCustomStore } from '@/stores'
 
 const store = useCustomStore()
+const logoUrl = 'https://x.none.bot/favicon.png'
 </script>
 
 <template>
@@ -39,9 +40,11 @@ const store = useCustomStore()
             >
               build
             </span>
-            <span class="flex-shrink-0 material-symbols-outlined text-primary text-5xl">
-              circle
-            </span>
+            <img
+              :src="logoUrl"
+              alt="NoneBot"
+              class="h-11 w-11 flex-shrink-0 rounded-full object-contain"
+            />
           </div>
 
           <div

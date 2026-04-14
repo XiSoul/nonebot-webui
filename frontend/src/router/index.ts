@@ -13,9 +13,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ViewIndex.vue'),
     children: [
       {
-        path: '/',
-        name: 'Welcome',
-        component: () => import('@/views/WelcomeItem.vue')
+        path: '',
+        redirect: '/dashboard'
       }
     ]
   },

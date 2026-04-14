@@ -1,4 +1,5 @@
 import { client } from './api'
+import { getDefaultApiBaseUrl, joinApiPath, toWebSocketUrl } from './base'
 
 export const covertTimestampToDateString = (
   timestamp: string,
@@ -24,9 +25,12 @@ export const limitContentShow = (content: string, limit: number) => {
 }
 
 export const generateURLForWebUI = (path: string, isWebsocket = false) => {
-  const base = client.getConfig().baseUrl!
-  const protocol = isWebsocket ? 'ws' : 'http'
-  return `${protocol}://${base}${path}`
+  const base = client.getConfig().baseUrl || getDefaultApiBaseUrl()
+  const target = joinApiPath(base, path)
+  if (isWebsocket) {
+    return toWebSocketUrl(target)
+  }
+  return target
 }
 
 export const sleep = (ms: number) => {
@@ -59,4 +63,54 @@ export const compareSemanticVersion = (v1: string, v2: string) => {
   if (v1Parsed.pre && v2Parsed.pre) return v1Parsed.pre.localeCompare(v2Parsed.pre) // 按字典顺序比较预发行版本
 
   return 0 // 完全相等
+}
+
+export const getErrorMessage = (error: unknown, fallback = '未知错误') => {
+  if (!error) return fallback
+
+  if (typeof error === 'string') {
+    const normalized = error.trim()
+    return normalized || fallback
+  }
+
+  if (error instanceof Error) {
+    return error.message.trim() || fallback
+  }
+
+  if (typeof error === 'object') {
+    const payload = error as Record<string, any>
+    const candidates = [
+      payload.detail,
+      payload.message,
+      payload.error,
+      payload.msg,
+      payload.body?.detail,
+      payload.body?.message,
+      payload.body?.error
+    ]
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim()
+      }
+
+      if (Array.isArray(candidate)) {
+        const messages = candidate
+          .map((item) => {
+            if (typeof item === 'string') return item.trim()
+            if (item && typeof item === 'object') {
+              return `${item.msg ?? item.message ?? item.detail ?? ''}`.trim()
+            }
+            return ''
+          })
+          .filter(Boolean)
+
+        if (messages.length) {
+          return messages.join('；')
+        }
+      }
+    }
+  }
+
+  return fallback
 }

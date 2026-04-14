@@ -1,49 +1,57 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { client, AuthService } from '@/client/api'
+import { setAuthToken } from '@/client/auth'
+import { createDebugApiBaseUrl, getDefaultApiBaseUrl } from '@/client/base'
+import { getErrorMessage } from '@/client/utils'
 import router from '@/router'
 import { useNoneBotStore, useToastStore } from '@/stores'
 
-const store = useToastStore()
+const toast = useToastStore()
 const nonebotStore = useNoneBotStore()
 
-const token = ref(''),
-  isDebug = ref(false),
-  host = ref(''),
-  port = ref('')
-
-const date = new Date()
+const token = ref('')
+const isDebug = ref(false)
+const host = ref('')
+const port = ref('')
 
 const login = async () => {
+  let baseUrl = getDefaultApiBaseUrl()
+
   if (isDebug.value) {
-    const baseUrl = `//${host.value}:${port.value}/api`
-    client.setConfig({
-      baseUrl: baseUrl
-    })
+    baseUrl = createDebugApiBaseUrl(host.value, port.value)
     localStorage.setItem('isDebug', '1')
     localStorage.setItem('debugUrl', baseUrl)
+  } else {
+    localStorage.setItem('isDebug', '0')
+    localStorage.removeItem('debugUrl')
   }
+
+  client.setConfig({
+    baseUrl
+  })
 
   const { data, error } = await AuthService.authTokenV1AuthLoginPost({
     body: {
       token: token.value,
-      mark: date.toISOString()
+      mark: new Date().toISOString()
     }
   })
 
   if (error) {
-    store.add('error', `错误: ${error.detail?.toString()}`, '', 5000)
+    toast.add('error', `错误: ${getErrorMessage(error, '登录失败')}`, '', 5000)
+    return
   }
 
-  if (data) {
-    localStorage.setItem('token', data.detail)
+  if (data?.detail) {
+    setAuthToken(data.detail)
     client.interceptors.request.use((request) => {
       request.headers.set('Authorization', `Bearer ${data.detail}`)
       return request
     })
     router.push('/')
     await nonebotStore.loadBots()
-    store.add('success', '登陆成功', '', 5000)
+    toast.add('success', '登录成功', '', 5000)
   }
 }
 </script>
@@ -56,7 +64,7 @@ const login = async () => {
           <input
             v-model="token"
             type="password"
-            placeholder="请键入登陆凭证"
+            placeholder="请输入登录凭证"
             class="input input-ghost bg-base-200"
             required
           />
@@ -73,7 +81,7 @@ const login = async () => {
 
         <div class="form-control">
           <button class="btn btn-primary text-base-100">
-            开始使用 <span class="material-symbols-outlined"> chevron_right </span>
+            开始使用<span class="material-symbols-outlined"> chevron_right </span>
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProcessLog } from '@/client/api'
+import { getAuthToken } from '@/client/auth'
 import { generateURLForWebUI } from '@/client/utils'
 import { useCustomStore } from '@/stores'
 import { useWebSocket } from '@vueuse/core'
@@ -27,14 +28,15 @@ defineExpose({
 const logData = ref<ProcessLog[]>([]),
   logContainer = ref<HTMLElement>(),
   isFailed = ref(false),
-  isInstalling = ref(false)
+  isInstalling = ref(false),
+  hasFinished = ref(false)
 
 const { status, data, close, open } = useWebSocket<ProcessLog>(
   generateURLForWebUI('/v1/process/log/ws', true),
   {
     immediate: false,
     onConnected(ws) {
-      const token = localStorage.getItem('token') ?? ''
+      const token = getAuthToken()
       ws.send(token)
       ws.send(JSON.stringify({ type: 'log', log_key: props.logKey }))
     }
@@ -69,6 +71,10 @@ watch(
       isFailed.value = true
     }
     if (data.message === '✨ Done!') {
+      if (!hasFinished.value) {
+        hasFinished.value = true
+        emit('finished', true)
+      }
       close()
     }
 
@@ -83,6 +89,8 @@ watch(
   (newValue) => {
     if (!newValue) return
     logData.value = []
+    isFailed.value = false
+    hasFinished.value = false
     open()
   }
 )
@@ -134,7 +142,7 @@ watch(
             'btn btn-sm btn-primary text-base-100': true,
             'btn-disabled': isFailed || isInstalling
           }"
-          @click="emit('finished', true), logViewModal?.close()"
+          @click="hasFinished = true, emit('finished', true), logViewModal?.close()"
         >
           完成
         </button>

@@ -34,12 +34,23 @@ const acceptModalData = (data: string) => {
         <div class="label">
           <span class="label-text">实例绝对路径</span>
         </div>
+        <input
+          type="text"
+          placeholder="例如: /data/nonebot 或 /home/xisoul/bots"
+          class="input input-bordered w-full max-w-xs"
+          v-model="store.projectPath"
+        />
+        <div class="label py-1">
+          <span class="label-text-alt opacity-70"
+            >支持手动输入目录（可用容器挂载目录，避免重建容器后丢失数据）</span
+          >
+        </div>
         <button class="btn btn-outline btn-primary" @click="folderSelectModal?.openModal">
-          选择文件夹
+          从 Base Dir 选择
         </button>
         <div class="label">
           <span v-if="store.projectPath" class="label-text bg-base-300 p-1 rounded w-full">
-            当前选择: (Base Dir)/{{ limitContentShow(store.projectPath, 30) }}
+            当前路径: {{ limitContentShow(store.projectPath, 60) }}
           </span>
         </div>
       </div>
@@ -50,10 +61,10 @@ const acceptModalData = (data: string) => {
 
       <div class="w-full"></div>
 
-      <button
-        :class="{
+        <button
+          :class="{
           'btn btn-sm btn-primary text-base-100': true,
-          'btn-disabled': !store.projectName.length || !store.projectPath.length
+          'btn-disabled': !store.projectName.trim().length || !store.projectPath.trim().length
         }"
         @click="store.step++"
       >

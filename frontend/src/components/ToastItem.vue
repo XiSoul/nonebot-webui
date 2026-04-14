@@ -30,7 +30,7 @@ const store = useToastStore()
       </div>
     </div>
 
-    <div v-if="data.from" class="text-xs">From: {{ data.from }}</div>
+    <div v-if="data.detail" class="text-xs break-all">{{ data.detail }}</div>
   </div>
 </template>
 
