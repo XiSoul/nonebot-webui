@@ -167,6 +167,9 @@ Temporary Items
 ### Node ###
 # Logs
 logs
+!frontend/src/views/Logs/
+!frontend/src/views/Logs/GlobalLogIndex.vue
+!frontend/src/views/Logs/log-center-client.ts
 *.log
 npm-debug.log*
 yarn-debug.log*
