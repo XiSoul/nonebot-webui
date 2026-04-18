@@ -135,15 +135,23 @@ nb self install nb-cli-plugin-webui
 使用 Docker 运行
 
 ```shell
-docker pull nonebot/cil-plugin-webui:latest
+docker pull ghcr.io/xisoul/nonebot-webui:latest
 ```
 
 Docker 镜像可以选择以下版本:
 
-- `latest`, `latest-slim`: 最新的稳定版本 (Release)
-- `latest-${python 版本}`, `latest-slim-${python 版本}`: 指定 Python 版本的最新版本
-- `sha-${commit sha:0:7}-${python 版本}`, `sha-${commit sha:0:7}-${python 版本}-slim`: 指定 commit 的版本
-- `${branch}-${python 版本}`, `${branch}-${python 版本}-slim`: 指定分支的最新版本
+- `latest`: 默认分支最新可用镜像
+- `master`: 默认分支镜像
+- `${commit_sha7}`: 指定 commit 的短 SHA 镜像
+- `${version}` / `${major}.${minor}`: 当推送 `v*` tag 时自动生成的版本镜像
+
+例如:
+
+```shell
+docker pull ghcr.io/xisoul/nonebot-webui:latest
+docker pull ghcr.io/xisoul/nonebot-webui:master
+docker pull ghcr.io/xisoul/nonebot-webui:<commit_sha7>
+```
 
 ### 命令行使用
 
@@ -154,13 +162,13 @@ nb ui --help
 Docker 镜像使用
 
 ```shell
-docker run -it --rm -p 8080:8080 -v ./:/app nonebot/cli-plugin-webui:latest --help
+docker run -it --rm -p 18080:18080 -v ./:/app ghcr.io/xisoul/nonebot-webui:latest --help
 ```
 
 可选附加 env 参数:
 
 - HOST: 指定监听地址，默认为 `0.0.0.0`
-- PORT: 指定监听端口，默认为 `8080`
+- PORT: 指定监听端口，默认为 `18080`
 
 ## 开发
 
@@ -205,20 +213,20 @@ Example:
 
 ```shell
 docker run -it --rm \
-  -p 8080:8080 \
+  -p 18080:18080 \
   -v ./:/app \
   -e WEBUI_HTTP_PROXY=http://host.docker.internal:7890 \
   -e WEBUI_HTTPS_PROXY=http://host.docker.internal:7890 \
   -e WEBUI_SOURCE_PRESET=tuna \
-  nonebot/cli-plugin-webui:latest
+  ghcr.io/xisoul/nonebot-webui:latest
 ```
 
 Auto-select best preset on startup:
 
 ```shell
 docker run -it --rm \
-  -p 8080:8080 \
+  -p 18080:18080 \
   -v ./:/app \
   -e WEBUI_AUTO_BEST_PRESET=1 \
-  nonebot/cli-plugin-webui:latest
+  ghcr.io/xisoul/nonebot-webui:latest
 ```
