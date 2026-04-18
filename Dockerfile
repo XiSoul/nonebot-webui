@@ -21,16 +21,22 @@ RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
-RUN pip install poetry setuptools
+RUN pip install poetry setuptools wheel
 
 ENV POETRY_VIRTUALENVS_CREATE=false
+
+WORKDIR /app
+
+COPY pyproject.toml poetry.lock README.md ./
+
+# Install runtime dependencies first for better cache reuse.
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY . /app
 COPY --from=frontend-build /app/nb_cli_plugin_webui/dist /app/nb_cli_plugin_webui/dist
 
-WORKDIR /app
-
-RUN poetry install --no-interaction --no-ansi
+# Install the current package separately after frontend assets are available.
+RUN pip install --no-deps .
 
 FROM python:${PYTHON_IMAGE}${VARIANT}
 

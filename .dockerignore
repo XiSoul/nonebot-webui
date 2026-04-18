@@ -42,7 +42,6 @@ Thumbs.db
 .prettierignore
 
 # Documentation
-README.md
 LICENSE
 docs/
 
