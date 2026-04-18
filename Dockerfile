@@ -6,8 +6,8 @@ FROM node:20 AS frontend-build
 
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package.json pnpm-lock.yaml* ./
+# Copy workspace metadata first so pnpm installs all frontend deps correctly
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 
 # Install dependencies
