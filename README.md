@@ -138,6 +138,17 @@ nb self install nb-cli-plugin-webui
 docker pull ghcr.io/xisoul/nonebot-webui:latest
 ```
 
+或从 Docker Hub 拉取:
+
+```shell
+docker pull docker.io/xisoul/nonebot-webui:latest
+```
+
+当前 GitHub Actions 会在构建成功后同时推送到以下仓库:
+
+- `ghcr.io/xisoul/nonebot-webui`
+- `docker.io/xisoul/nonebot-webui`
+
 Docker 镜像可以选择以下版本:
 
 - `latest`: 默认分支最新可用镜像
@@ -151,6 +162,10 @@ Docker 镜像可以选择以下版本:
 docker pull ghcr.io/xisoul/nonebot-webui:latest
 docker pull ghcr.io/xisoul/nonebot-webui:master
 docker pull ghcr.io/xisoul/nonebot-webui:<commit_sha7>
+
+docker pull docker.io/xisoul/nonebot-webui:latest
+docker pull docker.io/xisoul/nonebot-webui:master
+docker pull docker.io/xisoul/nonebot-webui:<commit_sha7>
 ```
 
 ### 命令行使用
@@ -163,6 +178,12 @@ Docker 镜像使用
 
 ```shell
 docker run -it --rm -p 18080:18080 -v ./:/app ghcr.io/xisoul/nonebot-webui:latest --help
+```
+
+或使用 Docker Hub 镜像:
+
+```shell
+docker run -it --rm -p 18080:18080 -v ./:/app docker.io/xisoul/nonebot-webui:latest --help
 ```
 
 可选附加 env 参数:
@@ -219,6 +240,12 @@ docker run -it --rm \
   -e WEBUI_HTTPS_PROXY=http://host.docker.internal:7890 \
   -e WEBUI_SOURCE_PRESET=tuna \
   ghcr.io/xisoul/nonebot-webui:latest
+```
+
+使用 Docker Hub 镜像时，只需要把镜像名替换为:
+
+```shell
+docker.io/xisoul/nonebot-webui:latest
 ```
 
 Auto-select best preset on startup:
