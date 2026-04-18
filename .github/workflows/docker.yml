@@ -68,8 +68,7 @@ jobs:
           push: true
           build-args: |
             SOURCE_COMMIT=${{ steps.image_tag.outputs.TAG }}
-            PYTHON_IMAGE=3.11
-            VARIANT=-slim
+            PYTHON_IMAGE=3.11-slim
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
