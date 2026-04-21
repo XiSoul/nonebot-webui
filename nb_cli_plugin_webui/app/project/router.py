@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 from typing import List
 
 from fastapi import Depends, APIRouter
@@ -11,7 +12,13 @@ from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProje
 from .exceptions import ProjectDeleteFailed
 from .config.router import router as config_router
 from .dependencies import get_nonebot_project_toml, get_nonebot_project_manager
-from .service import add_nonebot_project, list_nonebot_project, create_nonebot_project
+from .service import (
+    add_nonebot_project,
+    list_nonebot_project,
+    create_nonebot_project,
+    is_managed_project_dir,
+)
+from ..process.service import stop_project_shell_session
 from .schemas import (
     AddProjectData,
     GenericResponse,
@@ -75,11 +82,25 @@ async def delete_project(
     except Exception:
         pass
     try:
+        await stop_project_shell_session(data.project_id)
+    except Exception:
+        pass
+    try:
         LogStorageFather.remove_storage(data.project_id)
     except Exception:
         pass
 
-    if delete_fully:
+    should_delete_project_dir = delete_fully and is_managed_project_dir(
+        Path(data.project_dir)
+    )
+
+    if delete_fully and not should_delete_project_dir:
+        log.warning(
+            "Skip physical delete for external project directory: "
+            f"{data.project_dir}"
+        )
+
+    if should_delete_project_dir:
         try:
             shutil.rmtree(data.project_dir)
         except OSError as err:
@@ -117,6 +138,7 @@ async def get_plugins(
     """
     - 获取实例的插件列表
     """
+    await project.update_plugin_config()
     project_metadata = project.read()
     return GenericResponse(detail=project_metadata.plugins)
 

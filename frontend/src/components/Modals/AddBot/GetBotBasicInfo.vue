@@ -28,6 +28,7 @@ const search = async () => {
     store.adapters = detail.adapters
     store.plugins = detail.plugins
     store.pluginDirs = detail.plugin_dirs
+    store.builtinPlugins = detail.builtin_plugins
     store.projectPath = inputValue.value
 
     store.searchBotSuccess = true
@@ -51,6 +52,12 @@ const search = async () => {
           class="input input-bordered w-full max-w-xs"
           required
         />
+        <div class="label">
+          <span class="label-text-alt leading-5">
+            Docker 或容器部署时，这里要填写容器内的绝对路径，例如
+            <span class="font-mono">/external-projects/3998382152</span>，不是宿主机路径。
+          </span>
+        </div>
       </div>
 
       <button class="btn btn-primary text-base-100" @click="search()">开始扫描</button>
@@ -103,16 +110,11 @@ const search = async () => {
         </div>
       </div>
 
-      <div
-        :class="{
-          'flex gap-4 rounded-lg p-4 bg-base-200': true,
-          'opacity-50': !store.pluginDirs.length
-        }"
-      >
+      <div class="flex flex-col gap-2 rounded-lg p-4 bg-base-200">
         <span class="font-semibold">
-          {{ store.pluginDirs.length ? '已有插件目录:' : '未找到插件目录' }}
+          {{ store.pluginDirs.length ? '已有插件目录:' : '未配置插件目录' }}
         </span>
-        <div class="flex items-center flex-wrap gap-2">
+        <div v-if="store.pluginDirs.length" class="flex items-center flex-wrap gap-2">
           <span
             v-for="plugin_dir in store.pluginDirs"
             :key="plugin_dir"
@@ -122,6 +124,10 @@ const search = async () => {
             {{ plugin_dir }}
           </span>
         </div>
+        <span v-else class="text-sm opacity-70">
+          当前项目没有在配置里声明 <span class="font-mono">plugin_dirs</span>，这不影响继续导入；
+          已安装插件仍会按项目配置读取。
+        </span>
       </div>
     </div>
 

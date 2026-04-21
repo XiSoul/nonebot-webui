@@ -32,6 +32,11 @@ chartStore.addDataType('timeData', {
 const machineStatIsLoading = ref(true),
   processStatIsLoading = ref(true)
 
+const resetProcessCharts = () => {
+  chartStore.updateData('processData', 'cpuPercent', 0)
+  chartStore.updateData('processData', 'memPercent', 0)
+}
+
 const { data, close, open, send } = useWebSocket<StatusInfo>(
   generateURLForWebUI('/v1/status/ws', true),
   {
@@ -95,16 +100,17 @@ watch(
       chartStore.updateData(
         'processData',
         'cpuPercent',
-        Number(data.process.performance.cpu.toFixed(3)) * 100
+        Number(data.process.performance.cpu.toFixed(3))
       )
       chartStore.updateData(
         'processData',
         'memPercent',
-        Number(data.process.performance.mem.toFixed(3)) * 100
+        Number(data.process.performance.mem.toFixed(3))
       )
       processStatIsLoading.value = false
     } else {
-      processStatIsLoading.value = true
+      resetProcessCharts()
+      processStatIsLoading.value = false
     }
   }
 )
@@ -118,13 +124,12 @@ onUnmounted(() => {
 })
 
 watch(
-  () => nonebotStore.selectedBot,
-  (newValue) => {
-    if (!newValue) return
-    send(JSON.stringify({ type: 'status', project_id: newValue.project_id }))
-
-    // bug: 重置数据后, 图表会停止更新
-    // chartStore.resetData('processData')
+  () => nonebotStore.selectedBot?.project_id,
+  (projectId) => {
+    resetProcessCharts()
+    processStatIsLoading.value = true
+    if (!projectId) return
+    send(JSON.stringify({ type: 'status', project_id: projectId }))
   }
 )
 

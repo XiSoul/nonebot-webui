@@ -24,6 +24,7 @@ from .utils.container import (
 )
 from .router import router as api_router
 from .handlers.process import ProcessManager
+from .process.service import ProjectShellSessionManager
 from .handlers import driver_store_manager, plugin_store_manager, adapter_store_manager
 
 STATIC_PATH = Path(__file__).parent.parent / "dist"
@@ -123,10 +124,13 @@ async def shutdown_event():
     scheduler.shutdown()
 
     log.info("Check and stop all running processes.")
-    for process_id in ProcessManager.processes:
+    for process_id in list(ProcessManager.processes):
         process = ProcessManager.get_process(process_id)
         if process and process.process_is_running:
             await process.stop()
+
+    for project_id in list(ProjectShellSessionManager.sessions):
+        await ProjectShellSessionManager.stop_session(project_id)
 
 
 @app.exception_handler(404)

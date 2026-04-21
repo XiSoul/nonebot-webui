@@ -41,7 +41,8 @@ async def get_nonebot_loaded_plugins(
         python_path, await t.render_async(toml_path=config_file), cwd
     )
 
-    return _findall(r"nonebot_plugins:\s*(.*)", raw_content).split(",")
+    plugins = _findall(r"nonebot_plugins:\s*(.*)", raw_content).split(",")
+    return [plugin.strip() for plugin in plugins if plugin.strip()]
 
 
 async def get_nonebot_loaded_config(

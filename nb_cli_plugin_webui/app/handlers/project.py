@@ -159,8 +159,17 @@ class NoneBotProjectManager:
             adapters.append(ModuleInfo.parse_obj(adapter))
 
         data.adapters = adapters
+        current_plugins = {plugin.module_name: plugin for plugin in data.plugins}
+        data.plugins = [
+            current_plugins.get(plugin_name, self._build_placeholder_plugin(plugin_name))
+            for plugin_name in project_detail.plugins
+        ]
         data.plugin_dirs = project_detail.plugin_dirs
         data.builtin_plugins = project_detail.builtin_plugins
+        data.use_env = self._resolve_use_env(Path(data.project_dir))
+        data.drivers = self._resolve_driver_metadata(
+            self._get_configured_driver_names(data.use_env)
+        )
         self.store(data)
         await self.update_plugin_config()
 
@@ -175,6 +184,7 @@ class NoneBotProjectManager:
         plugins: List[Plugin] = list(),
         plugin_dirs: List[str] = list(),
         builtin_plugins: List[str] = list(),
+        use_env: str = ".env",
     ) -> None:
         self.store(
             NoneBotProjectMeta(
@@ -187,6 +197,7 @@ class NoneBotProjectManager:
                 plugins=plugins,
                 plugin_dirs=plugin_dirs,
                 builtin_plugins=builtin_plugins,
+                use_env=use_env,
             )
         )
         await self.update_plugin_config()
@@ -232,6 +243,148 @@ class NoneBotProjectManager:
         ordered = [base, *mixins, *remain]
         return "+".join(f"~{name}" for name in ordered)
 
+    @classmethod
+    def _resolve_driver_metadata(cls, driver_names: List[str]) -> List[ModuleInfo]:
+        from nb_cli_plugin_webui.app.models.types import ModuleType
+        from nb_cli_plugin_webui.app.store.dependencies import get_store_items
+
+        store_driver_data = get_store_items(ModuleType.DRIVER, is_search=False)
+        store_driver_map: Dict[str, ModuleInfo] = {}
+        for driver in store_driver_data:
+            normalized_name = cls._normalize_driver_name(driver.module_name)
+            if normalized_name and normalized_name not in store_driver_map:
+                store_driver_map[normalized_name] = driver
+
+        result: List[ModuleInfo] = []
+        seen = set()
+        for driver_name in driver_names:
+            normalized_name = cls._normalize_driver_name(driver_name)
+            if not normalized_name or normalized_name in seen:
+                continue
+
+            seen.add(normalized_name)
+            driver = store_driver_map.get(normalized_name)
+            if driver is not None:
+                result.append(ModuleInfo.parse_obj(driver.dict()))
+                continue
+
+            result.append(
+                ModuleInfo(
+                    module_name=f"~{normalized_name}",
+                    name=normalized_name,
+                    project_link=f"nonebot2[{normalized_name}]",
+                )
+            )
+
+        return result
+
+    @staticmethod
+    def _build_placeholder_plugin(plugin_name: str) -> Plugin:
+        return Plugin(
+            module_name=plugin_name,
+            name=plugin_name,
+            project_link=plugin_name,
+            config={},
+        )
+
+    @staticmethod
+    def _normalize_distribution_name(value: str) -> str:
+        return re.sub(r"[-_.]+", "-", (value or "").strip()).strip("-").lower()
+
+    @classmethod
+    def _build_plugin_store_lookup(cls) -> Dict[str, Plugin]:
+        from nb_cli_plugin_webui.app.models.types import ModuleType
+        from nb_cli_plugin_webui.app.store.dependencies import get_store_items
+
+        lookup: Dict[str, Plugin] = {}
+        for plugin in get_store_items(ModuleType.PLUGIN, is_search=False):
+            candidates = {
+                (plugin.module_name or "").strip(),
+                (plugin.module_name or "").split(".", 1)[0].strip(),
+                cls._normalize_distribution_name(plugin.project_link),
+                cls._normalize_distribution_name(plugin.module_name),
+                cls._normalize_distribution_name(plugin.name),
+            }
+            for candidate in candidates:
+                if candidate and candidate not in lookup:
+                    lookup[candidate] = Plugin.parse_obj(plugin.dict())
+        return lookup
+
+    @classmethod
+    def _lookup_plugin_store_metadata(
+        cls, plugin: Plugin, lookup: Dict[str, Plugin]
+    ) -> Plugin | None:
+        candidates = [
+            (plugin.module_name or "").strip(),
+            (plugin.module_name or "").split(".", 1)[0].strip(),
+            cls._normalize_distribution_name(plugin.project_link),
+            cls._normalize_distribution_name(plugin.module_name),
+            cls._normalize_distribution_name(plugin.name),
+        ]
+        for candidate in candidates:
+            if candidate and candidate in lookup:
+                return lookup[candidate]
+        return None
+
+    @classmethod
+    def _merge_plugin_store_metadata(
+        cls, plugin: Plugin, store_plugin: Plugin | None
+    ) -> Plugin:
+        if store_plugin is None:
+            return plugin
+
+        merged = plugin.dict()
+        fallback_fields = (
+            "project_link",
+            "name",
+            "desc",
+            "author",
+            "homepage",
+            "usage",
+            "tags",
+            "is_official",
+        )
+        for field in fallback_fields:
+            current_value = merged.get(field)
+            if current_value not in ("", "unknown", None, [], {}):
+                continue
+            fallback_value = getattr(store_plugin, field, None)
+            if fallback_value in ("", "unknown", None, [], {}):
+                continue
+            merged[field] = fallback_value
+
+        if not merged.get("extra"):
+            merged["extra"] = store_plugin.extra
+
+        return Plugin.parse_obj(merged)
+
+    @staticmethod
+    def _resolve_use_env(project_dir: Path) -> str:
+        base_env = project_dir / ".env"
+        if not base_env.is_file():
+            return ".env"
+
+        env_name = str(dotenv_values(base_env).get("ENVIRONMENT", "")).strip()
+        if not env_name:
+            return ".env"
+
+        env_file_name = f".env.{env_name}"
+        if (project_dir / env_file_name).is_file():
+            return env_file_name
+        return ".env"
+
+    def _get_configured_driver_names(self, env_name: str) -> List[str]:
+        data = self.read()
+        env_path = Path(data.project_dir) / env_name
+        if not env_path.is_file():
+            return []
+
+        raw_drivers = str(dotenv_values(env_path).get("DRIVER") or "").strip()
+        if not raw_drivers:
+            return []
+
+        return [driver_name for driver_name in raw_drivers.split("+") if driver_name]
+
     def add_adapter(self, adapter: ModuleInfo) -> None:
         self.config_manager.add_adapter(
             CliSimpleInfo(name=adapter.name, module_name=adapter.module_name)
@@ -254,45 +407,53 @@ class NoneBotProjectManager:
     async def update_plugin_config(self) -> None:
         data = self.read()
         config_file = self.config_manager.config_file
+        existing_plugins = {plugin.module_name: plugin for plugin in data.plugins}
+        plugin_store_lookup = self._build_plugin_store_lookup()
 
         try:
             plugins = await get_nonebot_loaded_plugins(
                 config_file, self.config_manager.python_path
             )
         except Exception:
-            plugins = []
+            return
+        plugin_names = list(dict.fromkeys([*plugins, *existing_plugins.keys()]))
         cwd = config_file.parent
 
         data.plugins = list()
-        for plugin in plugins:
+        for plugin in plugin_names:
             try:
                 plugin_metadata = await get_nonebot_plugin_metadata(
                     plugin, cwd, self.config_manager.python_path
                 )
             except Exception:
-                plugin_metadata = {
-                    "module_name": plugin,
-                    "name": plugin,
-                    "config": {},
-                }
+                current_plugin = existing_plugins.get(plugin)
+                plugin_metadata = (
+                    current_plugin.dict()
+                    if current_plugin is not None
+                    else self._build_placeholder_plugin(plugin).dict()
+                )
             try:
                 plugin_config_schema = await get_nonebot_plugin_config_schema(
                     plugin, cwd, self.config_manager.python_path
                 )
                 plugin_config = resolve_references(plugin_config_schema)
             except Exception:
-                plugin_config = dict()
+                plugin_config = plugin_metadata.get("config", {})
 
             plugin_metadata["config"] = plugin_config
             try:
                 pkg_version = await get_pkg_version(plugin, self.config_manager.python_path)
                 plugin_metadata["version"] = pkg_version
             except Exception:
-                plugin_metadata["version"] = "unknown"
+                plugin_metadata["version"] = plugin_metadata.get("version", "unknown")
 
             metadata = Plugin.parse_obj(plugin_metadata)
             if metadata.module_name == "unknown":
                 metadata.module_name = plugin
+            metadata = self._merge_plugin_store_metadata(
+                metadata,
+                self._lookup_plugin_store_metadata(metadata, plugin_store_lookup),
+            )
 
             data.plugins.append(metadata)
 

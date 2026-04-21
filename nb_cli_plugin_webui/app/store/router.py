@@ -10,7 +10,11 @@ from nb_cli_plugin_webui.app.project import get_nonebot_project_manager
 
 from .utils import get_store_manager
 from .schemas import Plugin, SearchRequest, StoreListResponse
-from .service import install_nonebot_module, uninstall_nonebot_module
+from .service import (
+    install_nonebot_module,
+    uninstall_nonebot_module,
+    update_nonebot_plugin,
+)
 
 router = APIRouter(tags=["store"])
 
@@ -38,6 +42,20 @@ async def _uninstall_nonebot_module(
     - 卸载 NoneBot 实例中的模块
     """
     await uninstall_nonebot_module(project, env, module)
+    return GenericResponse(detail="success")
+
+
+@router.post("/nonebot/update-plugin", response_model=GenericResponse[str])
+async def _update_nonebot_plugin(
+    env: str,
+    target_version: str = "",
+    plugin: Plugin = Body(...),
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 更新 NoneBot 实例中的插件，并将过程写入实例终端日志
+    """
+    await update_nonebot_plugin(project, plugin, target_version)
     return GenericResponse(detail="success")
 
 

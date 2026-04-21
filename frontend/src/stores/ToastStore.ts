@@ -8,6 +8,7 @@ import {
 } from '@/views/Logs/log-center-client'
 
 const MAX_VISIBLE_TOASTS = 5
+const DEFAULT_VISIBLE_DURATION = 5000
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning'
 
@@ -66,8 +67,17 @@ export const useToastStore = defineStore('toastStore', () => {
   const visibleToasts = ref<ToastItem[]>([])
   const minLevel = ref<LogLevel>('DEBUG')
   const settingsLoaded = ref(false)
+  const visibleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-  const removeVisibleOnly = (id: string) => {
+  const clearVisibleTimer = (id: string) => {
+    const timer = visibleTimers.get(id)
+    if (!timer) return
+    clearTimeout(timer)
+    visibleTimers.delete(id)
+  }
+
+  const dismissVisible = (id: string) => {
+    clearVisibleTimer(id)
     const visibleIndex = visibleToasts.value.findIndex((toast) => toast.id === id)
     if (visibleIndex !== -1) {
       visibleToasts.value.splice(visibleIndex, 1)
@@ -110,8 +120,6 @@ export const useToastStore = defineStore('toastStore', () => {
       project_name: selectedBot.project_name
     })
 
-    void exp
-
     const id = uuidv4()
     const toast: ToastItem = {
       id: id,
@@ -125,21 +133,35 @@ export const useToastStore = defineStore('toastStore', () => {
     }
 
     if (visibleToasts.value.length >= MAX_VISIBLE_TOASTS) {
-      removeVisibleOnly(visibleToasts.value[0].id)
+      dismissVisible(visibleToasts.value[0].id)
     }
     visibleToasts.value.push(toast)
     toasts.value.unshift(toast)
+
+    const duration = exp ?? DEFAULT_VISIBLE_DURATION
+    if (duration > 0) {
+      const timer = setTimeout(() => {
+        dismissVisible(id)
+      }, duration)
+      visibleTimers.set(id, timer)
+    }
   }
 
   const remove = (id: string) => {
-    removeVisibleOnly(id)
+    dismissVisible(id)
     const index = toasts.value.findIndex((toast) => toast.id === id)
     if (index !== -1) {
       toasts.value.splice(index, 1)
     }
   }
 
+  const dismiss = (id: string) => {
+    dismissVisible(id)
+  }
+
   const clear = () => {
+    visibleTimers.forEach((timer) => clearTimeout(timer))
+    visibleTimers.clear()
     toasts.value = []
     visibleToasts.value = []
   }
@@ -151,6 +173,7 @@ export const useToastStore = defineStore('toastStore', () => {
     loadSettings,
     setMinLevel,
     add,
+    dismiss,
     remove,
     clear
   }

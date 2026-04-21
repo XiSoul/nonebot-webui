@@ -1,7 +1,9 @@
 import os
 import sys
 import socket
-from typing import List
+import asyncio
+import shlex
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -12,13 +14,49 @@ from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.project import service as project_service
 from nb_cli_plugin_webui.app.handlers.process import (
     Processor,
+    CustomLog,
+    LogStorage,
     ProcessManager,
     LogStorageFather,
     ProcessAlreadyRunning,
+    ProcessNotRunning,
 )
-from nb_cli_plugin_webui.app.utils.bot_proxy import get_bot_proxy_env
+from nb_cli_plugin_webui.app.utils.bot_proxy import get_bot_proxy_env, get_pip_proxy_env
 
 from .exceptions import DriverNotFound, AdapterNotFound
+
+
+SHELL_COMMAND_DONE_MARKER = "__NB_WEBUI_CMD_DONE__:"
+
+
+class ProjectShellSessionManager:
+    sessions: Dict[str, Processor] = dict()
+
+    @classmethod
+    def get_session(cls, project_id: str) -> Optional[Processor]:
+        session = cls.sessions.get(project_id)
+        if session is None:
+            return None
+        if session.refresh_runtime_state():
+            return session
+        cls.sessions.pop(project_id, None)
+        return None
+
+    @classmethod
+    def set_session(cls, project_id: str, session: Processor) -> None:
+        cls.sessions[project_id] = session
+
+    @classmethod
+    async def stop_session(cls, project_id: str) -> bool:
+        session = cls.sessions.pop(project_id, None)
+        if session is None:
+            return False
+
+        try:
+            await session.stop()
+        except Exception:
+            pass
+        return True
 
 
 def _is_port_available(port: int) -> bool:
@@ -47,6 +85,200 @@ def _pick_available_port(project_id: str) -> int:
     return 0
 
 
+def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[dict, bool]:
+    project_dir = Path(project_meta.project_dir)
+    if pip_safe:
+        env, socks_proxy_disabled = get_pip_proxy_env(
+            os.environ.copy(), project_meta=project_meta
+        )
+    else:
+        env = get_bot_proxy_env(os.environ.copy(), project_meta=project_meta)
+        socks_proxy_disabled = False
+    env["TERM"] = "xterm-color"
+
+    if sys.platform == "win32":
+        venv_path = project_dir / Path(".venv/Scripts")
+        env["PATH"] = f"{venv_path.absolute()};{env.get('PATH', '')}"
+    else:
+        venv_path = project_dir / Path(".venv/bin")
+        env["PATH"] = f"{venv_path.absolute()}:{env.get('PATH', '')}"
+
+    virtual_env = project_dir / ".venv"
+    if virtual_env.is_dir():
+        env["VIRTUAL_ENV"] = str(virtual_env.absolute())
+
+    return env, socks_proxy_disabled
+
+
+def _get_project_python_path(project_dir: Path) -> str:
+    if sys.platform == "win32":
+        python_path = project_dir / ".venv" / "Scripts" / "python.exe"
+    else:
+        python_path = project_dir / ".venv" / "bin" / "python"
+
+    return str(python_path.absolute()) if python_path.exists() else "python"
+
+
+def _build_shell_bootstrap_script(
+    project_dir: Path, proxy_env: Optional[Dict[str, str]] = None
+) -> str:
+    project_python = _get_project_python_path(project_dir)
+    quoted_python = shlex.quote(project_python)
+    proxy_env = proxy_env or {}
+    saved_http_proxy = shlex.quote(
+        str(proxy_env.get("HTTP_PROXY") or proxy_env.get("http_proxy") or "")
+    )
+    saved_https_proxy = shlex.quote(
+        str(proxy_env.get("HTTPS_PROXY") or proxy_env.get("https_proxy") or "")
+    )
+    saved_all_proxy = shlex.quote(
+        str(proxy_env.get("ALL_PROXY") or proxy_env.get("all_proxy") or "")
+    )
+    saved_no_proxy = shlex.quote(
+        str(proxy_env.get("NO_PROXY") or proxy_env.get("no_proxy") or "")
+    )
+    return (
+        f"__nb_webui_python={quoted_python}\n"
+        f"__nb_webui_saved_http_proxy={saved_http_proxy}\n"
+        f"__nb_webui_saved_https_proxy={saved_https_proxy}\n"
+        f"__nb_webui_saved_all_proxy={saved_all_proxy}\n"
+        f"__nb_webui_saved_no_proxy={saved_no_proxy}\n"
+        "pip() {\n"
+        '  case "${HTTP_PROXY:-${http_proxy:-}} ${HTTPS_PROXY:-${https_proxy:-}} ${ALL_PROXY:-${all_proxy:-}}" in\n'
+        "    *socks4://*|*socks4a://*|*socks5://*|*socks5h://*)\n"
+        '      env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy "$__nb_webui_python" -m pip "$@"\n'
+        "      ;;\n"
+        "    *)\n"
+        '      "$__nb_webui_python" -m pip "$@"\n'
+        "      ;;\n"
+        "  esac\n"
+        "}\n"
+        "playwright() {\n"
+        '  if [ -n "${__nb_webui_saved_http_proxy:-}" ]; then export HTTP_PROXY="$__nb_webui_saved_http_proxy"; export http_proxy="$__nb_webui_saved_http_proxy"; fi\n'
+        '  if [ -n "${__nb_webui_saved_https_proxy:-}" ]; then export HTTPS_PROXY="$__nb_webui_saved_https_proxy"; export https_proxy="$__nb_webui_saved_https_proxy"; fi\n'
+        '  if [ -n "${__nb_webui_saved_all_proxy:-}" ]; then export ALL_PROXY="$__nb_webui_saved_all_proxy"; export all_proxy="$__nb_webui_saved_all_proxy"; fi\n'
+        '  if [ -n "${__nb_webui_saved_no_proxy:-}" ]; then export NO_PROXY="$__nb_webui_saved_no_proxy"; export no_proxy="$__nb_webui_saved_no_proxy"; fi\n'
+        '  "$__nb_webui_python" -m playwright "$@"\n'
+        "}\n"
+    )
+
+
+def _wrap_shell_command(command: str) -> str:
+    stripped = command.rstrip("\r\n")
+    if not stripped:
+        return command
+    return f"{stripped}\nprintf '{SHELL_COMMAND_DONE_MARKER}%s\\n' \"$?\"\n"
+
+
+def ensure_project_log_storage(project_id: str) -> LogStorage:
+    log_storage = LogStorageFather.get_storage(project_id)
+    if log_storage is not None:
+        return log_storage
+
+    log_storage = LogStorage(Config.process_log_destroy_seconds)
+    LogStorageFather.add_storage(log_storage, project_id)
+    return log_storage
+
+
+async def stop_project_shell_session(project_id: str) -> bool:
+    return await ProjectShellSessionManager.stop_session(project_id)
+
+
+async def ensure_project_shell_session(
+    project: project_service.NoneBotProjectManager,
+) -> Optional[Processor]:
+    project_meta = project.read()
+    runtime_process = ProcessManager.get_process(project_meta.project_id)
+    if runtime_process and runtime_process.refresh_runtime_state():
+        return None
+
+    existing_session = ProjectShellSessionManager.get_session(project_meta.project_id)
+    if existing_session is not None:
+        return existing_session
+
+    raw_proxy_env, _ = build_project_runtime_env(project_meta, pip_safe=False)
+    env, socks_proxy_disabled = build_project_runtime_env(project_meta, pip_safe=True)
+    env["PYTHONUNBUFFERED"] = "1"
+    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+
+    if sys.platform == "win32":
+        args = ("cmd",)
+    else:
+        preferred_shell = Path("/bin/bash")
+        shell = (
+            str(preferred_shell)
+            if preferred_shell.is_file()
+            else os.environ.get("SHELL") or "/bin/sh"
+        )
+        args = (shell,)
+
+    process = Processor(
+        *args,
+        cwd=Path(project_meta.project_dir),
+        env=env,
+        log_destroy_seconds=Config.process_log_destroy_seconds,
+        project_id=project_meta.project_id,
+        project_name=project_meta.project_name,
+    )
+    process.log_storage = ensure_project_log_storage(project_meta.project_id)
+    await process.start()
+    ProjectShellSessionManager.set_session(project_meta.project_id, process)
+    bootstrap_script = _build_shell_bootstrap_script(
+        Path(project_meta.project_dir), proxy_env=raw_proxy_env
+    )
+    await process.write_stdin(bootstrap_script.encode())
+
+    await process.log_storage.add_log(
+        CustomLog(level="INFO", message="项目终端 Shell 已连接，可直接连续输入命令。")
+    )
+    if socks_proxy_disabled:
+        await process.log_storage.add_log(
+            CustomLog(
+                level="WARNING",
+                message="检测到 SOCKS 代理：终端中的 pip 会临时跳过代理，playwright 等其他命令仍保留原代理环境。",
+            )
+        )
+    return process
+
+
+async def get_active_terminal_process(
+    project: project_service.NoneBotProjectManager,
+    *,
+    create_shell: bool = False,
+) -> Optional[Processor]:
+    runtime_process = ProcessManager.get_process(project.project_id)
+    if runtime_process and runtime_process.refresh_runtime_state():
+        return runtime_process
+
+    shell_session = ProjectShellSessionManager.get_session(project.project_id)
+    if shell_session is not None:
+        return shell_session
+
+    if create_shell:
+        return await ensure_project_shell_session(project)
+
+    return None
+
+
+async def execute_project_command(
+    project: project_service.NoneBotProjectManager, command: str
+) -> None:
+    process = await get_active_terminal_process(project, create_shell=True)
+    if process is None:
+        raise ProcessNotRunning()
+    runtime_process = ProcessManager.get_process(project.project_id)
+    if (
+        runtime_process is not None
+        and runtime_process is process
+        and runtime_process.refresh_runtime_state()
+    ):
+        await process.write_stdin(command.encode())
+        return
+
+    wrapped_command = _wrap_shell_command(command)
+    await process.write_stdin(wrapped_command.encode())
+
+
 async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     project_meta = project.read()
     if not project_meta.adapters:
@@ -54,8 +286,10 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     if not project_meta.drivers:
         raise DriverNotFound()
 
+    await stop_project_shell_session(project_meta.project_id)
+
     project_dir = Path(project_meta.project_dir)
-    env = get_bot_proxy_env(os.environ.copy(), project_meta=project_meta)
+    env, _ = build_project_runtime_env(project_meta)
 
     env_file = project_dir / project_meta.use_env
     env_data = dotenv_values(env_file) if env_file.exists() else {}
@@ -82,17 +316,9 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     if not configured_host:
         project.write_to_env(project_meta.use_env, "HOST", host)
 
-    env["TERM"] = "xterm-color"
-    if sys.platform == "win32":
-        venv_path = project_dir / Path(".venv/Scripts")
-        env["PATH"] = f"{venv_path.absolute()};{env['PATH']}"
-    else:
-        venv_path = project_dir / Path(".venv/bin")
-        env["PATH"] = f"{venv_path.absolute()}:{env['PATH']}"
-
     process = ProcessManager.get_process(project_meta.project_id)
     if process:
-        if process.process_is_running:
+        if process.refresh_runtime_state():
             raise ProcessAlreadyRunning()
         else:
             await process.start()
@@ -139,8 +365,8 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
                 project_name=project_meta.project_name,
             )
 
+        process.log_storage = ensure_project_log_storage(project_meta.project_id)
         await process.start()
-        LogStorageFather.add_storage(process.log_storage, project_meta.project_id)
         ProcessManager.add_process(process, project_meta.project_id)
 
 
@@ -148,7 +374,7 @@ async def restart_nonebot_project_if_running(
     project: project_service.NoneBotProjectManager,
 ) -> bool:
     process = ProcessManager.get_process(project.project_id)
-    if not process or not process.process_is_running:
+    if not process or not process.refresh_runtime_state():
         return False
 
     await process.stop()

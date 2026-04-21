@@ -10,7 +10,10 @@ from nb_cli_plugin_webui.app.models.types import ModuleType
 from nb_cli_plugin_webui.app.handlers import call_pip_install
 from nb_cli_plugin_webui.app.models.store import Plugin, ModuleInfo
 from nb_cli_plugin_webui.app.project import service as project_service
-from nb_cli_plugin_webui.app.process.service import run_nonebot_project
+from nb_cli_plugin_webui.app.process.service import (
+    run_nonebot_project,
+    ensure_project_log_storage,
+)
 from nb_cli_plugin_webui.app.utils.string_utils import generate_complexity_string
 from nb_cli_plugin_webui.app.project.exceptions import WriteNoneBotProjectProfileFailed
 from nb_cli_plugin_webui.app.handlers.process import (
@@ -31,8 +34,50 @@ from .exception import (
 
 def _ensure_project_is_stopped(project: project_service.NoneBotProjectManager) -> None:
     process = ProcessManager.get_process(project.project_id)
-    if process and process.process_is_running:
+    if process and process.refresh_runtime_state():
         raise ProjectIsRunning()
+
+
+def _resolve_package_name(package_spec: str) -> str:
+    package = (package_spec or "").strip()
+    if not package:
+        return ""
+
+    if package.startswith("-e "):
+        package = package[3:].strip()
+
+    if " @ " in package:
+        package = package.split(" @ ", 1)[0].strip()
+    elif "@" in package and "://" in package:
+        package = package.split("@", 1)[0].strip()
+
+    match = re.match(r"[A-Za-z0-9][A-Za-z0-9_.-]*", package)
+    return match.group(0) if match else ""
+
+
+def _normalize_distribution_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", (value or "").strip()).strip("-")
+
+
+def _resolve_plugin_package_spec(plugin: Plugin, target_version: str = "") -> str:
+    package_spec = (plugin.project_link or "").strip()
+    package_name = _resolve_package_name(package_spec)
+
+    if not package_name or package_name == "unknown":
+        for candidate in (plugin.module_name, plugin.name):
+            normalized = _normalize_distribution_name(candidate or "")
+            if normalized and normalized != "unknown":
+                package_name = normalized
+                break
+
+    if not package_name:
+        return package_spec or plugin.module_name or plugin.name or "unknown"
+
+    normalized_target_version = (target_version or "").strip()
+    if normalized_target_version:
+        return f"{package_name}=={normalized_target_version}"
+
+    return package_spec if package_spec and package_spec != "unknown" else package_name
 
 
 def install_nonebot_module(
@@ -42,7 +87,7 @@ def install_nonebot_module(
 ) -> str:
     running_process = ProcessManager.get_process(project.project_id)
     should_restart_after_install = bool(
-        running_process and running_process.process_is_running
+        running_process and running_process.refresh_runtime_state()
     )
     project_meta = project.read()
     if isinstance(module, Plugin):
@@ -90,7 +135,7 @@ def install_nonebot_module(
             return True
 
         running_process = ProcessManager.get_process(project.project_id)
-        if running_process and running_process.process_is_running:
+        if running_process and running_process.refresh_runtime_state():
             await log.add_log(CustomLog(message="正在停止实例..."))
             await running_process.stop()
             await log.add_log(CustomLog(message="实例已停止，开始安装模块。"))
@@ -140,6 +185,39 @@ def install_nonebot_module(
     process.done()
 
     return log_key
+
+
+async def update_nonebot_plugin(
+    project: project_service.NoneBotProjectManager,
+    plugin: Plugin,
+    target_version: str = "",
+) -> str:
+    _ensure_project_is_stopped(project)
+    log = ensure_project_log_storage(project.project_id)
+    project_meta = project.read()
+    package_spec = _resolve_plugin_package_spec(plugin, target_version)
+
+    await log.add_log(CustomLog(message=f"准备更新插件: {plugin.module_name}"))
+    await log.add_log(CustomLog(message=f"执行 pip 安装目标: {package_spec}"))
+
+    proc, _ = await call_pip_install(
+        package_spec,
+        ["-U", "-i", project_meta.mirror_url],
+        log_storage=log,
+        python_path=project.config_manager.python_path,
+        project_meta=project_meta,
+    )
+    return_code = await proc.wait()
+    if return_code != 0:
+        raise RuntimeError(
+            f"Update failed for {package_spec} (exit code: {return_code})."
+        )
+
+    await log.add_log(CustomLog(message="pip 安装完成，正在刷新插件元数据..."))
+    await project.update_plugin_config()
+    await log.add_log(CustomLog(message="插件元数据已刷新。"))
+    await log.add_log(CustomLog(message="✨ 插件更新完成"))
+    return "success"
 
 
 async def uninstall_nonebot_module(

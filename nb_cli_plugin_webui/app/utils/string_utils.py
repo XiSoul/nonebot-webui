@@ -66,11 +66,10 @@ def generate_access_token(length: int = 20) -> str:
 
 
 def decode_parse(data: bytes) -> str:
-    encodings = ["utf-8", "gbk"]
-    decoded_data = str(data)
+    encodings = ["utf-8", "utf-8-sig", "gb18030", "gbk"]
     for encoding in encodings:
         try:
-            decoded_data = data.decode(encoding)
+            return data.decode(encoding)
         except UnicodeDecodeError:
             continue
-    return decoded_data
+    return data.decode("utf-8", errors="replace")

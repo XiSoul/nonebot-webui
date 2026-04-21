@@ -67,4 +67,5 @@ export const initWebUI = async () => {
 
   const store = useNoneBotStore()
   await store.loadBots()
+  store.startHeartbeat()
 }

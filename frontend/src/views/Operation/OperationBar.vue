@@ -18,7 +18,6 @@ const canDelete = computed(
   () =>
     hasBot.value &&
     !store.selectedBot?.is_running &&
-    Object.values(store.bots).length > 1 &&
     !operating.value &&
     !deleting.value
 )

@@ -50,7 +50,8 @@ const addBot = async () => {
       mirror_url: store.pythonMirror,
       adapters: store.adapters.map((obj) => obj.module_name) ?? [],
       plugins: store.plugins,
-      plugin_dirs: store.pluginDirs
+      plugin_dirs: store.pluginDirs,
+      builtin_plugins: store.builtinPlugins
     }
   })
 
@@ -167,7 +168,7 @@ onUnmounted(() => {
                 {{ pluginDir }}
               </span>
               <span v-if="!store.pluginDirs.length" class="text-base-content/50">
-                未找到插件目录
+                未配置插件目录（可选，不影响导入）
               </span>
             </td>
           </tr>

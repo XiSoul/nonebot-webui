@@ -25,7 +25,7 @@ const store = useToastStore()
 
         <p class="text-sm flex items-center break-all">{{ data.message }}</p>
       </div>
-      <div class="btn btn-xs btn-square btn-ghost" @click="store.remove(data.id)">
+      <div class="btn btn-xs btn-square btn-ghost" @click="store.dismiss(data.id)">
         <span class="material-symbols-outlined"> close </span>
       </div>
     </div>

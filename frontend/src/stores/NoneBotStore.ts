@@ -14,6 +14,9 @@ const SELECTED_BOT_KEY = 'selectedBot'
 export const useNoneBotStore = defineStore('nonebotStore', () => {
   const bots = ref<{ [key: string]: NoneBotProjectMeta }>({})
   const selectedBot = ref<NoneBotProjectMeta>()
+  const isLoadingBots = ref(false)
+  let reloadQueued = false
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   const toast = useToastStore()
   const statusStore = useStatusStore()
@@ -58,28 +61,55 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
   }
 
   const loadBots = async () => {
-    const { data } = await ProjectService.listProjectV1ProjectListGet()
-    if (!data) return
-
-    bots.value = data.detail
-    const botList = Object.values(bots.value)
-    if (!botList.length) {
-      selectedBot.value = undefined
-      localStorage.removeItem(SELECTED_BOT_KEY)
+    if (isLoadingBots.value) {
+      reloadQueued = true
       return
     }
 
-    if (selectedBot.value) {
-      const synced = bots.value[selectedBot.value.project_id]
-      if (synced) {
-        selectedBot.value = synced
-        localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(synced))
+    isLoadingBots.value = true
+    try {
+      const { data } = await ProjectService.listProjectV1ProjectListGet()
+      if (!data) return
+
+      bots.value = data.detail
+      const botList = Object.values(bots.value)
+      if (!botList.length) {
+        selectedBot.value = undefined
+        localStorage.removeItem(SELECTED_BOT_KEY)
         return
       }
-    }
 
-    // Auto-fallback to first instance when current one is deleted.
-    selectBot(botList[0], true)
+      if (selectedBot.value) {
+        const synced = bots.value[selectedBot.value.project_id]
+        if (synced) {
+          selectedBot.value = synced
+          localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(synced))
+          return
+        }
+      }
+
+      // Auto-fallback to first instance when current one is deleted.
+      selectBot(botList[0], true)
+    } finally {
+      isLoadingBots.value = false
+      if (reloadQueued) {
+        reloadQueued = false
+        void loadBots()
+      }
+    }
+  }
+
+  const startHeartbeat = (interval = 3000) => {
+    if (heartbeatTimer) return
+    heartbeatTimer = setInterval(() => {
+      void loadBots()
+    }, interval)
+  }
+
+  const stopHeartbeat = () => {
+    if (!heartbeatTimer) return
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
   }
 
   const updateBotEnv = async (projectId: string, env: string) => {
@@ -134,6 +164,8 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     getExtendedBotsList,
     selectBot,
     loadBots,
+    startHeartbeat,
+    stopHeartbeat,
     updateBotEnv,
     updateEnv
   }

@@ -1,8 +1,9 @@
 import json
+import re
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from cookiecutter.exceptions import OutputDirExistsException
 from dotenv import set_key, dotenv_values
 
@@ -13,7 +14,7 @@ from nb_cli.handlers import create_project, create_virtualenv
 from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.models.types import ModuleType
 from nb_cli_plugin_webui.app.store.dependencies import get_store_items
-from nb_cli_plugin_webui.app.models.base import ModuleInfo, NoneBotProjectMeta
+from nb_cli_plugin_webui.app.models.base import ModuleInfo, NoneBotProjectMeta, Plugin
 from nb_cli_plugin_webui.app.utils.string_utils import generate_complexity_string
 from nb_cli_plugin_webui.app.handlers import NoneBotProjectManager, call_pip_install
 from nb_cli_plugin_webui.app.handlers.process import (
@@ -40,12 +41,169 @@ def _driver_sort_key(driver: ModuleInfo) -> int:
     return 0
 
 
+def _normalize_package_name(package_name: str) -> str:
+    return re.sub(r"[-_.]+", "-", (package_name or "").strip()).lower()
+
+
+def _extract_distribution_name(requirement: str) -> str:
+    value = (requirement or "").strip()
+    if not value or value == "unknown":
+        return ""
+
+    if value.startswith("-e "):
+        value = value[3:].strip()
+
+    if " @ " in value:
+        value = value.split(" @ ", 1)[0].strip()
+    elif "@" in value and "://" in value:
+        value = value.split("@", 1)[0].strip()
+
+    match = re.match(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value)
+    if not match:
+        return ""
+    return _normalize_package_name(match.group(0))
+
+
+def _dedupe_packages(packages: List[str]) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for package in packages:
+        value = (package or "").strip()
+        if not value or value == "unknown" or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _resolve_imported_project_drivers(project_dir: Path, env_name: str) -> List[ModuleInfo]:
+    env_path = project_dir / env_name
+    if not env_path.is_file():
+        return []
+
+    raw_drivers = str(dotenv_values(env_path).get("DRIVER") or "").strip()
+    if not raw_drivers:
+        return []
+
+    store_driver_data = get_store_items(ModuleType.DRIVER, is_search=False)
+    store_driver_map: Dict[str, ModuleInfo] = {}
+    for driver in store_driver_data:
+        normalized_name = NoneBotProjectManager._normalize_driver_name(
+            driver.module_name
+        )
+        if normalized_name and normalized_name not in store_driver_map:
+            store_driver_map[normalized_name] = driver
+
+    result: List[ModuleInfo] = []
+    seen = set()
+    for raw_driver in raw_drivers.split("+"):
+        normalized_name = NoneBotProjectManager._normalize_driver_name(raw_driver)
+        if not normalized_name or normalized_name in seen:
+            continue
+
+        seen.add(normalized_name)
+        driver = store_driver_map.get(normalized_name)
+        if driver is not None:
+            result.append(ModuleInfo.parse_obj(driver.dict()))
+            continue
+
+        result.append(
+            ModuleInfo(
+                module_name=f"~{normalized_name}",
+                name=normalized_name,
+                project_link=f"nonebot2[{normalized_name}]",
+            )
+        )
+
+    return result
+
+
+async def _get_installed_distribution_names(
+    python_path: str, log: Optional[LogStorage] = None
+) -> Set[str]:
+    script = (
+        "import json\n"
+        "from importlib.metadata import distributions\n"
+        'names = sorted({(dist.metadata.get("Name") or "").strip() '
+        'for dist in distributions() if (dist.metadata.get("Name") or "").strip()})\n'
+        "print(json.dumps(names))\n"
+    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            python_path,
+            "-c",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as err:
+        if log is not None:
+            await log.add_log(
+                CustomLog(
+                    level="WARNING",
+                    message=(
+                        "Failed to inspect installed distributions, continue install all "
+                        f"packages. {err}"
+                    ),
+                )
+            )
+        return set()
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        if log is not None:
+            await log.add_log(
+                CustomLog(
+                    level="WARNING",
+                    message=(
+                        "Failed to inspect installed distributions, continue install all "
+                        f"packages. {stderr.decode('utf-8', 'replace').strip()}"
+                    ),
+                )
+            )
+        return set()
+
+    try:
+        package_names = json.loads(stdout.decode("utf-8", "replace"))
+    except json.JSONDecodeError:
+        if log is not None:
+            await log.add_log(
+                CustomLog(
+                    level="WARNING",
+                    message="Failed to parse installed distributions, continue install all packages.",
+                )
+            )
+        return set()
+
+    if not isinstance(package_names, list):
+        return set()
+
+    return {
+        _normalize_package_name(str(package_name))
+        for package_name in package_names
+        if str(package_name).strip()
+    }
+
+
 def _can_reset_project_dir(project_dir: Path, base_project_dir: Path) -> bool:
     try:
         project_dir.resolve().relative_to(base_project_dir.resolve())
     except ValueError:
         return False
     return project_dir.exists() and project_dir != base_project_dir
+
+
+def is_managed_project_dir(project_dir: Path) -> bool:
+    base_dir = str(getattr(Config, "base_dir", "") or "").strip()
+    if not base_dir:
+        return False
+
+    base_project_dir = Path(base_dir).expanduser().resolve()
+    try:
+        project_dir.expanduser().resolve().relative_to(base_project_dir)
+    except ValueError:
+        return False
+
+    return project_dir.exists() and project_dir.resolve() != base_project_dir
 
 
 def _reset_failed_project_dir(project_dir: Path, base_project_dir: Path) -> bool:
@@ -191,8 +349,6 @@ def create_nonebot_project(data: CreateProjectData) -> str:
         else:
             plugin_dirs.append(f"{project_name}/plugins")
 
-    config_manager = ConfigManager(working_dir=project_dir, use_venv=True)
-
     log = LogStorage(Config.process_log_destroy_seconds)
     log_key = generate_complexity_string(10)
     LogStorageFather.add_storage(log, log_key)
@@ -255,13 +411,17 @@ def create_nonebot_project(data: CreateProjectData) -> str:
     process.add(log.add_log, CustomLog(message="Install dependencies..."))
 
     async def install_dependencies():
+        python_path = ConfigManager(working_dir=project_dir, use_venv=True).python_path
+        packages = _dedupe_packages(["nonebot2", *context.packages])
         proc, _ = await call_pip_install(
-            ["nonebot2", *context.packages],
+            packages,
             ["-i", data.mirror_url],
-            python_path=config_manager.python_path,
+            python_path=python_path,
             log_storage=log,
         )
-        await proc.wait()
+        return_code = await proc.wait()
+        if return_code != 0:
+            raise RuntimeError(f"Install dependencies failed (exit code: {return_code}).")
         return True
 
     process.add(install_dependencies)
@@ -317,28 +477,50 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     current_env = resolve_project_use_env(project_dir)
     configured_port = get_project_env_port(project_dir, current_env)
     ensure_project_port_is_unique(configured_port)
+    stored_drivers = _resolve_imported_project_drivers(project_dir, current_env)
 
     store_plugin_data = get_store_items(ModuleType.PLUGIN, is_search=False)
     store_adapter_data = get_store_items(ModuleType.ADAPTER, is_search=False)
 
-    installed_plugins = list()
-    for plugin in store_plugin_data:
-        if plugin.module_name in data.plugins:
-            installed_plugins.append(plugin)
+    store_plugin_map = {plugin.module_name: plugin for plugin in store_plugin_data}
+    stored_plugins: List[Plugin] = []
+    for plugin_name in data.plugins:
+        plugin = store_plugin_map.get(plugin_name)
+        if plugin is not None:
+            stored_plugins.append(plugin)
+            continue
+        stored_plugins.append(
+            Plugin(
+                module_name=plugin_name,
+                name=plugin_name,
+                project_link=plugin_name,
+                config={},
+            )
+        )
 
-    installed_adapters = list()
-    for adapter in store_adapter_data:
-        if adapter.module_name in data.adapters:
-            installed_adapters.append(adapter)
+    store_adapter_map = {adapter.module_name: adapter for adapter in store_adapter_data}
+    stored_adapters: List[ModuleInfo] = []
+    installable_adapters: List[ModuleInfo] = []
+    for adapter_name in data.adapters:
+        adapter = store_adapter_map.get(adapter_name)
+        if adapter is not None:
+            stored_adapters.append(adapter)
+            installable_adapters.append(adapter)
+            continue
+        stored_adapters.append(
+            ModuleInfo(
+                module_name=adapter_name,
+                name=adapter_name,
+                project_link="unknown",
+            )
+        )
 
     context = ProjectContext()
     context.variables["project_name"] = project_name
     context.variables["adapters"] = json.dumps(
-        {adapter.project_link: adapter.dict() for adapter in installed_adapters}
+        {adapter.project_link: adapter.dict() for adapter in installable_adapters}
     )
-    context.packages.extend([adapter.project_link for adapter in installed_adapters])
-
-    config_manager = ConfigManager(working_dir=project_dir, use_venv=True)
+    context.packages.extend([adapter.project_link for adapter in installable_adapters])
 
     log = LogStorage(Config.process_log_destroy_seconds)
     log_key = generate_complexity_string(10)
@@ -377,13 +559,38 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     process.add(log.add_log, CustomLog(message="Install dependencies..."))
 
     async def install_dependencies():
+        python_path = ConfigManager(working_dir=project_dir, use_venv=True).python_path
+        packages = _dedupe_packages(["nonebot2", *context.packages])
+        installed_package_names = await _get_installed_distribution_names(
+            python_path, log
+        )
+        missing_packages: List[str] = []
+        for package in packages:
+            distribution_name = _extract_distribution_name(package)
+            if distribution_name and distribution_name in installed_package_names:
+                await log.add_log(
+                    CustomLog(message=f"Skip already installed package: {package}")
+                )
+                continue
+            missing_packages.append(package)
+
+        if not missing_packages:
+            await log.add_log(
+                CustomLog(
+                    message="All required dependencies are already installed, skip pip install."
+                )
+            )
+            return True
+
         proc, _ = await call_pip_install(
-            ["nonebot2", *context.packages],
+            missing_packages,
             ["-i", data.mirror_url],
-            python_path=config_manager.python_path,
+            python_path=python_path,
             log_storage=log,
         )
-        await proc.wait()
+        return_code = await proc.wait()
+        if return_code != 0:
+            raise RuntimeError(f"Install dependencies failed (exit code: {return_code}).")
         return True
 
     process.add(install_dependencies)
@@ -395,12 +602,13 @@ async def add_nonebot_project(data: AddProjectData) -> str:
         project_name=project_name,
         project_dir=project_dir,
         mirror_url=data.mirror_url,
-        adapters=installed_adapters,
-        plugins=installed_plugins,
+        adapters=stored_adapters,
+        drivers=stored_drivers,
+        plugins=stored_plugins,
+        plugin_dirs=data.plugin_dirs,
+        builtin_plugins=data.builtin_plugins,
+        use_env=current_env,
     )
-    manager.read()
-    for plugin in installed_plugins:
-        await manager.add_plugin(plugin)
 
     env_path = project_dir / ".env"
     if not env_path.exists() or not env_path.is_file():
@@ -441,7 +649,7 @@ def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
             if process is None:
                 continue
 
-            if _project.project_id == process_id and process.process_is_running:
+            if _project.project_id == process_id and process.refresh_runtime_state():
                 is_running = True
                 break
 

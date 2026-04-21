@@ -6,6 +6,7 @@ import {
   type Driver as BaseDriver,
   type nb_cli_plugin_webui__app__models__base__Plugin
 } from '@/client/api'
+import { updateProjectPlugin } from '@/client/store'
 import { compareSemanticVersion, getErrorMessage } from '@/client/utils'
 import router from '@/router'
 import { useNoneBotStore, useToastStore } from '@/stores'
@@ -16,6 +17,9 @@ const store = useNoneBotStore()
 const toast = useToastStore()
 
 interface Plugin extends nb_cli_plugin_webui__app__models__base__Plugin {
+  valid?: boolean
+  time?: string
+  skip_test?: boolean
   latestVersion?: string
   releases?: string[]
   selectedVersion?: string
@@ -32,7 +36,42 @@ interface Driver extends BaseDriver {
 const pluginsRef = ref<Plugin[]>()
 const adaptersRef = ref<Adapter[]>()
 const driversRef = ref<Driver[]>()
+const updatingPluginNames = ref<string[]>([])
 const isModuleActionLocked = computed(() => Boolean(store.selectedBot?.is_running))
+
+const normalizePackageName = (value?: string) => {
+  return `${value ?? ''}`.trim().replace(/[-_.]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+const resolvePluginPackageName = (plugin: Plugin) => {
+  const rawSpec = `${plugin.project_link ?? ''}`.trim()
+  let candidate = rawSpec
+
+  if (candidate.startsWith('-e ')) {
+    candidate = candidate.slice(3).trim()
+  }
+
+  if (candidate.includes(' @ ')) {
+    candidate = candidate.split(' @ ', 1)[0]?.trim() ?? ''
+  } else if (candidate.includes('@') && candidate.includes('://')) {
+    candidate = candidate.split('@', 1)[0]?.trim() ?? ''
+  }
+
+  const matched = candidate.match(/[A-Za-z0-9][A-Za-z0-9_.-]*/)
+  const packageName = normalizePackageName(matched?.[0])
+  if (packageName && packageName !== 'unknown') {
+    return packageName
+  }
+
+  for (const fallback of [plugin.module_name, plugin.name]) {
+    const normalized = normalizePackageName(fallback)
+    if (normalized && normalized !== 'unknown') {
+      return normalized
+    }
+  }
+
+  return ''
+}
 
 const ensureBotStopped = () => {
   if (!store.selectedBot) {
@@ -90,8 +129,9 @@ const updateLatestVersion = async () => {
     return
   }
 
-  const fetchLatestVersion = async (moduleName: string) => {
-    const url = `https://pypi.org/pypi/${moduleName}/json`
+  const fetchLatestVersion = async (packageName: string) => {
+    if (!packageName) return null
+    const url = `https://pypi.org/pypi/${packageName}/json`
     const { data } = await useFetch(url).json<{
       info: {
         version: string
@@ -105,7 +145,8 @@ const updateLatestVersion = async () => {
     pluginsRef.value = await Promise.all(
       pluginsRef.value.map(async (plugin: Plugin) => {
         plugin.latestVersion = 'ignore'
-        const data = await fetchLatestVersion(plugin.module_name!)
+        const packageName = resolvePluginPackageName(plugin)
+        const data = await fetchLatestVersion(packageName)
         if (data) {
           plugin.latestVersion = data.info.version
           plugin.releases = Object.keys(data.releases)
@@ -148,6 +189,45 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
   if (data) {
     await getData()
     toast.add('success', '卸载成功', '', 4000)
+  }
+}
+
+const updatePlugin = async (plugin: Plugin) => {
+  if (!ensureBotStopped()) return
+
+  const projectId = store.selectedBot!.project_id
+  const env = store.selectedBot!.use_env!
+  const moduleName = plugin.module_name || ''
+  const targetVersion =
+    plugin.selectedVersion && plugin.selectedVersion !== plugin.version
+      ? plugin.selectedVersion
+      : plugin.latestVersion && compareSemanticVersion(plugin.version!, plugin.latestVersion) < 0
+        ? plugin.latestVersion
+        : ''
+
+  updatingPluginNames.value.push(moduleName)
+  toast.add('info', `开始更新插件 ${plugin.name}，可在实例终端查看详细日志`, '', 5000)
+
+  const { data, error } = await updateProjectPlugin(projectId, env, {
+    ...plugin,
+    version: plugin.version ?? '0.0.0',
+    valid: plugin.valid ?? true,
+    time: plugin.time ?? '',
+    skip_test: plugin.skip_test ?? false,
+    module_type: 'plugin'
+  }, targetVersion)
+
+  updatingPluginNames.value = updatingPluginNames.value.filter((name) => name !== moduleName)
+
+  if (error) {
+    toast.add('error', `更新失败，原因：${getErrorMessage(error)}`, '', 5000)
+    return
+  }
+
+  if (data) {
+    await getData()
+    await updateLatestVersion()
+    toast.add('success', `${plugin.name} 更新完成`, '', 4000)
   }
 }
 </script>
@@ -196,7 +276,7 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
               <th class="flex item-center gap-2 whitespace-nowrap">
                 <span>{{ plugin.name }}</span>
                 <span
-                  v-if="compareSemanticVersion(plugin.version!, plugin.latestVersion!)"
+                  v-if="compareSemanticVersion(plugin.version!, plugin.latestVersion!) < 0"
                   class="badge badge-primary text-base-100 font-normal"
                 >
                   可更新
@@ -230,13 +310,14 @@ const uninstall = async (module: Plugin | Adapter | Driver) => {
                 </label>
                 <button
                   v-if="
-                    compareSemanticVersion(plugin.version!, plugin.latestVersion!) ||
+                    compareSemanticVersion(plugin.version!, plugin.latestVersion!) < 0 ||
                     (plugin.version !== plugin.selectedVersion && plugin.selectedVersion)
                   "
                   class="btn btn-primary btn-sm text-base-100"
-                  :disabled="isModuleActionLocked"
+                  :disabled="isModuleActionLocked || updatingPluginNames.includes(plugin.module_name || '')"
+                  @click="updatePlugin(plugin)"
                 >
-                  更新
+                  {{ updatingPluginNames.includes(plugin.module_name || '') ? '更新中' : '更新' }}
                 </button>
               </td>
             </tr>

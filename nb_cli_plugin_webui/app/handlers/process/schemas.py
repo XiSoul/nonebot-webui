@@ -8,6 +8,7 @@ _T = TypeVar("_T")
 
 
 class LogLevel(str, Enum):
+    NONE = ""
     STDOUT = "STDOUT"
 
     INFO = "INFO"

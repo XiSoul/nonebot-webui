@@ -9,6 +9,7 @@ from nb_cli.consts import WINDOWS
 
 from .log import LogStorage
 from .schemas import ProcessLog
+from nb_cli_plugin_webui.app.utils.string_utils import decode_parse
 
 
 async def run_asyncio_subprocess(
@@ -23,7 +24,7 @@ async def run_asyncio_subprocess(
             while True:
                 line = await stream.readline()
                 if line:
-                    decode_line = line.decode("utf-8", "replace")
+                    decode_line = decode_parse(line)
                     log_model = ProcessLog(message=decode_line)
                     await log_storage.add_log(log_model)
                 else:

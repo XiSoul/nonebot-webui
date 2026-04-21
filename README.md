@@ -168,13 +168,59 @@ docker pull docker.io/xisoul/nonebot-webui:master
 docker pull docker.io/xisoul/nonebot-webui:<commit_sha7>
 ```
 
-### 命令行使用
+### 生产部署
+
+推荐使用 GitHub Actions 构建并推送正式版镜像，镜像仓库如下：
+
+- `ghcr.io/xisoul/nonebot-webui`
+- `docker.io/xisoul/nonebot-webui`
+
+测试服部署默认使用以下运行参数：
 
 ```shell
-nb ui --help
+docker run -d \
+  --name nonebot-webui \
+  --restart=always \
+  --network host \
+  -e HOST=0.0.0.0 \
+  -e PORT=18080 \
+  -v /home/xisoul/nonebot-webui-data/projects:/projects \
+  -v /home/xisoul/nonebot-webui-external-projects:/external-projects \
+  -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
+  -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
+  ghcr.io/xisoul/nonebot-webui:latest
 ```
 
-Docker 镜像使用
+部署前请确保以下路径存在且可写：
+
+- `/home/xisoul/nonebot-webui-data/projects`
+- `/home/xisoul/nonebot-webui-external-projects`
+- `/home/xisoul/nonebot-webui-data/config.json`
+- `/home/xisoul/nonebot-webui-data/project.json`
+
+注意：`/app/config.json` 与 `/app/project.json` 会在运行时被程序写回，不能只读挂载。
+Docker 运行模式下项目默认根目录为 `/projects`。
+
+如需本地打包后手工部署，可使用：
+
+```shell
+./build-and-export.sh
+./deploy.sh
+```
+
+本镜像当前不内置 Playwright Linux 系统依赖；若你管理的外部项目自身依赖 Playwright，请在对应项目运行环境中单独安装。
+
+### 登录说明
+
+WebUI 登录使用“登录凭证”换取 JWT 会话：
+
+1. 在登录页输入当前登录凭证
+2. 前端调用 `/v1/auth/login`
+3. 后端校验凭证后返回 JWT
+4. 前端将 JWT 保存到当前浏览器会话并用于后续 API / WebSocket 调用
+
+因此，登录凭证本身不能直接作为 `Authorization: Bearer <token>` 使用。
+
 
 ```shell
 docker run -it --rm -p 18080:18080 -v ./:/app ghcr.io/xisoul/nonebot-webui:latest --help

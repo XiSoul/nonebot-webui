@@ -12,6 +12,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKER_HUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN || secrets.DOCKERHUB_PASSWORD || secrets.DOCKER_HUB_ACCESS_TOKEN }}
+  TEST_SERVER_HOST: ${{ secrets.TEST_SERVER_HOST || '72.31.92.61' }}
+  TEST_SERVER_USER: ${{ secrets.TEST_SERVER_USER || 'xisoul' }}
 
 jobs:
   build:
@@ -41,6 +43,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
@@ -54,7 +57,7 @@ jobs:
           else
             TAG="${GITHUB_SHA::7}"
           fi
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta
@@ -62,7 +65,7 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-            docker.io/${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+            ${{ env.DOCKERHUB_USERNAME != '' && format('docker.io/{0}/{1}', env.DOCKERHUB_USERNAME, env.IMAGE_NAME) || '' }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -78,7 +81,8 @@ jobs:
           push: true
           build-args: |
             SOURCE_COMMIT=${{ steps.image_tag.outputs.TAG }}
-            PYTHON_IMAGE=3.11-slim
+            PYTHON_IMAGE=3.11
+            VARIANT=-slim
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -93,37 +97,58 @@ jobs:
       - name: Check deploy configuration
         id: deploy_config
         env:
-          TEST_SERVER_HOST: ${{ secrets.TEST_SERVER_HOST }}
-          TEST_SERVER_USER: ${{ secrets.TEST_SERVER_USER }}
           TEST_SERVER_PASSWORD: ${{ secrets.TEST_SERVER_PASSWORD }}
         run: |
-          if [[ -n "$TEST_SERVER_HOST" && -n "$TEST_SERVER_USER" && -n "$TEST_SERVER_PASSWORD" ]]; then
+          if [[ -n "$TEST_SERVER_PASSWORD" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Test server secrets are not configured; skipping deployment."
+            echo "Test server password is not configured; skipping deployment."
           fi
 
       - name: Deploy via SSH
         if: steps.deploy_config.outputs.enabled == 'true'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.TEST_SERVER_HOST }}
-          username: ${{ secrets.TEST_SERVER_USER }}
+          host: ${{ env.TEST_SERVER_HOST }}
+          username: ${{ env.TEST_SERVER_USER }}
           password: ${{ secrets.TEST_SERVER_PASSWORD }}
           script: |
             set -e
 
+            docker_cmd() {
+              if docker info >/dev/null 2>&1; then
+                docker "$@"
+              else
+                sudo docker "$@"
+              fi
+            }
+
+            for path in \
+              /home/xisoul/nonebot-webui-data \
+              /home/xisoul/nonebot-webui-data/projects \
+              /home/xisoul/nonebot-webui-external-projects
+            do
+              if [[ ! -d "$path" ]]; then
+                sudo mkdir -p "$path"
+              fi
+            done
+
+            for file in \
+              /home/xisoul/nonebot-webui-data/config.json \
+              /home/xisoul/nonebot-webui-data/project.json
+            do
+              if [[ ! -f "$file" ]]; then
+                sudo touch "$file"
+              fi
+              sudo chmod 666 "$file"
+            done
+
             IMAGE="ghcr.io/${{ github.repository_owner }}/nonebot-webui:${{ needs.build.outputs.image_tag }}"
 
-            # Pull the image built in this workflow run
-            docker pull "$IMAGE"
-
-            # Stop and remove old container
-            docker rm -f nonebot-webui 2>/dev/null || true
-
-            # Start new container
-            docker run -d \
+            docker_cmd pull "$IMAGE"
+            docker_cmd rm -f nonebot-webui 2>/dev/null || true
+            docker_cmd run -d \
               --name nonebot-webui \
               --restart=always \
               --network host \
@@ -135,18 +160,15 @@ jobs:
               -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
               "$IMAGE"
 
-            # Wait for healthy
             echo "Waiting for container to be healthy..."
             for i in $(seq 1 30); do
-              STATUS=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' nonebot-webui 2>/dev/null || echo "unknown")
+              STATUS=$(docker_cmd inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' nonebot-webui 2>/dev/null || echo unknown)
               echo "  [$i/30] status: $STATUS"
-              if [ "$STATUS" = "healthy" ]; then
-                echo "Container is healthy!"
+              if [[ "$STATUS" == "healthy" ]]; then
                 exit 0
               fi
               sleep 2
             done
 
-            echo "Warning: Container did not become healthy within 60s"
-            docker logs --tail 20 nonebot-webui
+            docker_cmd logs --tail 50 nonebot-webui
             exit 1

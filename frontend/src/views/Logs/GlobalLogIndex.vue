@@ -37,6 +37,13 @@ const filters = reactive({
 
 const projectOptions = computed(() => nonebotStore.getExtendedBotsList())
 
+const levelClass = (level: LogLevel) => {
+  if (level === 'DEBUG') return 'text-info'
+  if (level === 'INFO') return 'text-success'
+  if (level === 'WARNING') return 'text-warning'
+  return 'text-error'
+}
+
 const syncProjectName = () => {
   const selected = projectOptions.value.find((item) => item.project_id === filters.project_id)
   filters.project_name = selected?.project_name || ''
@@ -257,41 +264,22 @@ void loadSettings().then(refreshLogs)
       <div v-if="!filters.date" class="text-sm opacity-60">请先选择一个日志日期。</div>
       <div v-else-if="!entries.length" class="text-sm opacity-60">当前筛选条件下暂无日志。</div>
 
-      <div v-else class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>等级</th>
-              <th>来源</th>
-              <th>消息</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in entries" :key="`${item.timestamp}-${item.source}-${item.message}`">
-              <td class="font-mono text-xs align-top whitespace-nowrap">{{ item.timestamp }}</td>
-              <td class="align-top">
-                <span
-                  :class="{
-                    'badge badge-outline': true,
-                    'badge-info': item.level === 'DEBUG' || item.level === 'INFO',
-                    'badge-warning': item.level === 'WARNING',
-                    'badge-error text-base-100': item.level === 'ERROR' || item.level === 'CRITICAL'
-                  }"
-                >
-                  {{ item.level }}
-                </span>
-              </td>
-              <td class="font-mono text-xs align-top">{{ item.source }}</td>
-              <td class="align-top">
-                <div class="break-all">{{ item.message }}</div>
-                <div v-if="item.detail" class="text-xs opacity-70 break-all mt-1">
-                  {{ item.detail }}
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div
+        v-else
+        class="rounded-xl border border-base-content/10 bg-base-300/40 px-4 py-3 h-[65vh] overflow-auto font-mono text-xs leading-6"
+      >
+        <div
+          v-for="item in entries"
+          :key="`${item.timestamp}-${item.source}-${item.message}`"
+          class="whitespace-pre-wrap break-all border-b border-base-content/5 py-1 last:border-b-0"
+        >
+          <span class="text-base-content/50">{{ item.timestamp }}</span>
+          <span class="mx-2" :class="levelClass(item.level)">[{{ item.level }}]</span>
+          <span class="text-base-content/60">{{ item.project_name ? `${item.source}/${item.project_name}` : item.source }}</span>
+          <span class="mx-2 text-base-content/30">|</span>
+          <span :class="levelClass(item.level)">{{ item.message }}</span>
+          <span v-if="item.detail" class="text-base-content/60"> | {{ item.detail }}</span>
+        </div>
       </div>
     </section>
   </div>

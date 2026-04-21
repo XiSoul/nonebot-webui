@@ -6,8 +6,7 @@ from fastapi.websockets import WebSocketState
 
 from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.auth.utils import websocket_auth
-from nb_cli_plugin_webui.app.handlers.process import Processor
-from nb_cli_plugin_webui.app.process.dependencies import get_process
+from nb_cli_plugin_webui.app.handlers.process import Processor, ProcessManager
 
 from . import utils
 from .schemas import StatusInfo, SystemInfo
@@ -49,9 +48,11 @@ async def get_performance(websocket: WebSocket) -> None:
                             msg = receive_task.result()
                             if msg.get("type") == "status":
                                 project_id = msg.get("project_id")
-                                process = get_process(project_id)
+                                process = ProcessManager.get_process(project_id)
+                                if process is not None:
+                                    process.refresh_runtime_state()
                         except Exception:
-                            pass
+                            process = None
             except Exception:
                 pass
 

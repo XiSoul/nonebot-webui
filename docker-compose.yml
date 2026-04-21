@@ -1,0 +1,20 @@
+services:
+  nonebot-webui:
+    image: ghcr.io/xisoul/nonebot-webui:latest
+    container_name: nonebot-webui
+    restart: always
+    network_mode: host
+    environment:
+      - HOST=0.0.0.0
+      - PORT=18080
+    volumes:
+      - ./data/projects:/projects
+      - ./data/external-projects:/external-projects
+      - ./data/config.json:/app/config.json
+      - ./data/project.json:/app/project.json
+    healthcheck:
+      test: ["CMD", "sh", "-c", "httpx --verbose --follow-redirects http://127.0.0.1:18080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
