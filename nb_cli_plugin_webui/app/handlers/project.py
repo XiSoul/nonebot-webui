@@ -127,8 +127,25 @@ class NoneBotProjectManager:
         self.config_manager = ConfigManager(
             working_dir=Path(info.project_dir), use_venv=True
         )
+        self._refresh_discovered_plugin_dirs(info)
 
         return info
+
+    @staticmethod
+    def _refresh_discovered_plugin_dirs(info: NoneBotProjectMeta) -> None:
+        from nb_cli_plugin_webui.app.project.utils import get_nonebot_info_from_toml
+
+        project_dir = Path(info.project_dir)
+        if not project_dir.is_dir():
+            info.discovered_plugin_dirs = []
+            return
+
+        try:
+            detail = get_nonebot_info_from_toml(project_dir)
+        except Exception:
+            return
+
+        info.discovered_plugin_dirs = detail.discovered_plugin_dirs
 
     def get_toml_data(self) -> TOMLDocument:
         return tomlkit.parse(
@@ -165,6 +182,7 @@ class NoneBotProjectManager:
             for plugin_name in project_detail.plugins
         ]
         data.plugin_dirs = project_detail.plugin_dirs
+        data.discovered_plugin_dirs = project_detail.discovered_plugin_dirs
         data.builtin_plugins = project_detail.builtin_plugins
         data.use_env = self._resolve_use_env(Path(data.project_dir))
         data.drivers = self._resolve_driver_metadata(
@@ -183,6 +201,7 @@ class NoneBotProjectManager:
         drivers: List[ModuleInfo] = list(),
         plugins: List[Plugin] = list(),
         plugin_dirs: List[str] = list(),
+        discovered_plugin_dirs: List[str] = list(),
         builtin_plugins: List[str] = list(),
         use_env: str = ".env",
     ) -> None:
@@ -196,6 +215,7 @@ class NoneBotProjectManager:
                 drivers=drivers,
                 plugins=plugins,
                 plugin_dirs=plugin_dirs,
+                discovered_plugin_dirs=discovered_plugin_dirs,
                 builtin_plugins=builtin_plugins,
                 use_env=use_env,
             )

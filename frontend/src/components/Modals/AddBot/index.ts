@@ -10,6 +10,7 @@ export const useAddBotStore = defineStore('addBotStore', () => {
   const adapters = ref<Record<string, string>[]>([])
   const plugins = ref<string[]>([])
   const pluginDirs = ref<string[]>([])
+  const discoveredPluginDirs = ref<string[]>([])
   const builtinPlugins = ref<string[]>([])
   const isInstalling = ref(false)
   const addBotSuccess = ref(false)
@@ -24,6 +25,7 @@ export const useAddBotStore = defineStore('addBotStore', () => {
     adapters.value = []
     plugins.value = []
     pluginDirs.value = []
+    discoveredPluginDirs.value = []
     builtinPlugins.value = []
     isInstalling.value = false
     addBotSuccess.value = false
@@ -39,6 +41,7 @@ export const useAddBotStore = defineStore('addBotStore', () => {
     adapters,
     plugins,
     pluginDirs,
+    discoveredPluginDirs,
     builtinPlugins,
     isInstalling,
     addBotSuccess,

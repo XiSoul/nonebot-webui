@@ -145,7 +145,7 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr>
-            <th class="font-semibold text-base">实例插件</th>
+            <th class="font-semibold text-base">已配置插件</th>
             <td class="flex items-center flex-wrap gap-2">
               <span
                 v-for="plugin in store.plugins"
@@ -154,11 +154,13 @@ onUnmounted(() => {
               >
                 {{ plugin }}
               </span>
-              <span v-if="!store.plugins.length" class="text-base-content/50"> 未找到插件 </span>
+              <span v-if="!store.plugins.length" class="text-base-content/50">
+                未在 `tool.nonebot.plugins` 中声明插件
+              </span>
             </td>
           </tr>
           <tr>
-            <th class="font-semibold text-base">插件加载目录</th>
+            <th class="font-semibold text-base">本地插件目录</th>
             <td class="flex items-center flex-wrap gap-2">
               <span
                 v-for="pluginDir in store.pluginDirs"
@@ -168,7 +170,22 @@ onUnmounted(() => {
                 {{ pluginDir }}
               </span>
               <span v-if="!store.pluginDirs.length" class="text-base-content/50">
-                未配置插件目录（可选，不影响导入）
+                未声明 `plugin_dirs`（可选，不影响已安装插件导入）
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <th class="font-semibold text-base">扫描到的候选目录</th>
+            <td class="flex items-center flex-wrap gap-2">
+              <span
+                v-for="pluginDir in store.discoveredPluginDirs"
+                :key="pluginDir"
+                class="badge badge-ghost !bg-base-100"
+              >
+                {{ pluginDir }}
+              </span>
+              <span v-if="!store.discoveredPluginDirs.length" class="text-base-content/50">
+                未扫描到额外候选目录
               </span>
             </td>
           </tr>

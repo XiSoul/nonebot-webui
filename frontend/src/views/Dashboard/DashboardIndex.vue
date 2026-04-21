@@ -1,114 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { getAuthToken } from '@/client/auth'
-import { generateURLForWebUI } from '@/client/utils'
-import type { ProcessLog } from '@/client/api'
+import { computed, ref } from 'vue'
 import { useNoneBotStore } from '@/stores'
 import CreateBotIndex from '@/components/Modals/CreateBot/CreateBotIndex.vue'
 import MachineStat from '@/views/Dashboard/MachineStat.vue'
 import AddBotIndex from '@/components/Modals/AddBot/AddBotIndex.vue'
+import { useInstanceMessageCount } from '@/composables/useInstanceMessageCount'
 
 const store = useNoneBotStore()
 
 const createBotModal = ref<InstanceType<typeof CreateBotIndex> | null>()
 const addBotModal = ref<InstanceType<typeof AddBotIndex> | null>()
-const selectedBotMessageCount = ref(0)
-let messagePollTimer: ReturnType<typeof setInterval> | null = null
-
-const INSTANCE_MESSAGE_PATTERNS = [
-  /"post_type"\s*:\s*"message"/i,
-  /"message_type"\s*:/i,
-  /\bmessage_id\b/i,
-  /收到消息/i,
-  /received message/i,
-  /\bmessage from\b/i,
-  /\buser message\b/i,
-  /onebot.+message/i
-]
 
 const getBotIsRunning = computed(() => {
   return store.getExtendedBotsList().filter((bot) => bot.is_running).length
 })
 
 const selectedBot = computed(() => store.selectedBot)
-
-const isInstanceMessageLog = (log: ProcessLog) => {
-  const content = `${log.message ?? ''}`.trim()
-  if (!content) return false
-  return INSTANCE_MESSAGE_PATTERNS.some((pattern) => pattern.test(content))
-}
-
-const fetchProcessLogs = async (projectId: string) => {
-  const token = getAuthToken()
-  if (!token) return [] as ProcessLog[]
-
-  const response = await fetch(
-    generateURLForWebUI(`/v1/process/log/history?log_id=${encodeURIComponent(projectId)}`),
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  )
-
-  if (!response.ok) {
-    return [] as ProcessLog[]
-  }
-
-  const payload = (await response.json()) as { detail?: ProcessLog[] }
-  return payload.detail ?? []
-}
-
-const syncSelectedBotMessageCount = async () => {
-  const projectId = selectedBot.value?.project_id || ''
-  if (!projectId || !selectedBot.value?.is_running) {
-    selectedBotMessageCount.value = 0
-    return
-  }
-
-  const logs = await fetchProcessLogs(projectId)
-
-  if (selectedBot.value?.project_id !== projectId) {
-    return
-  }
-
-  selectedBotMessageCount.value = logs.filter(isInstanceMessageLog).length
-}
-
-const clearMessagePollTimer = () => {
-  if (!messagePollTimer) return
-  clearInterval(messagePollTimer)
-  messagePollTimer = null
-}
-
-const restartMessagePolling = () => {
-  clearMessagePollTimer()
-  void syncSelectedBotMessageCount()
-
-  if (!selectedBot.value?.project_id || !selectedBot.value?.is_running) {
-    return
-  }
-
-  messagePollTimer = setInterval(() => {
-    void syncSelectedBotMessageCount()
-  }, 8000)
-}
-
-onMounted(() => {
-  restartMessagePolling()
-})
-
-onUnmounted(() => {
-  clearMessagePollTimer()
-})
-
-watch(
-  () => `${selectedBot.value?.project_id ?? ''}:${selectedBot.value?.is_running ? '1' : '0'}`,
-  () => {
-    restartMessagePolling()
-  }
-)
+const { messageCount: selectedBotMessageCount } = useInstanceMessageCount(selectedBot)
 </script>
 
 <template>

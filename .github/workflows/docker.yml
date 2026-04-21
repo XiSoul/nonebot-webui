@@ -25,6 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       image_tag: ${{ steps.image_tag.outputs.TAG }}
+      app_version: ${{ steps.app_version.outputs.VERSION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -49,13 +50,19 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
+      - name: Read package version
+        id: app_version
+        run: |
+          VERSION="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Generate image tag
         id: image_tag
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/v}"
           else
-            TAG="${GITHUB_SHA::7}"
+            TAG="${GITHUB_REF_NAME}"
           fi
           echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -70,7 +77,6 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and Push
@@ -80,7 +86,8 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            SOURCE_COMMIT=${{ steps.image_tag.outputs.TAG }}
+            APP_VERSION=${{ steps.app_version.outputs.VERSION }}
+            VCS_REF=${{ github.sha }}
             PYTHON_IMAGE=3.11
             VARIANT=-slim
           tags: ${{ steps.meta.outputs.tags }}

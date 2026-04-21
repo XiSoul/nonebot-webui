@@ -152,20 +152,23 @@ docker pull docker.io/xisoul/nonebot-webui:latest
 Docker 镜像可以选择以下版本:
 
 - `latest`: 默认分支最新可用镜像
-- `master`: 默认分支镜像
-- `${commit_sha7}`: 指定 commit 的短 SHA 镜像
-- `${version}` / `${major}.${minor}`: 当推送 `v*` tag 时自动生成的版本镜像
+- `master`: 默认分支镜像，适合持续跟进测试
+- `${version}` / `${major}.${minor}`: 当推送 `v*` tag 时自动生成的正式版本镜像，例如 `0.4.2`、`0.4`
+
+当前不再推荐使用 GitHub commit 短 SHA 作为公开版本标签。镜像版本统一以显式版本号为主，便于后续做镜像更新检测、版本对比和回滚。
 
 例如:
 
 ```shell
 docker pull ghcr.io/xisoul/nonebot-webui:latest
 docker pull ghcr.io/xisoul/nonebot-webui:master
-docker pull ghcr.io/xisoul/nonebot-webui:<commit_sha7>
+docker pull ghcr.io/xisoul/nonebot-webui:0.4.2
+docker pull ghcr.io/xisoul/nonebot-webui:0.4
 
 docker pull docker.io/xisoul/nonebot-webui:latest
 docker pull docker.io/xisoul/nonebot-webui:master
-docker pull docker.io/xisoul/nonebot-webui:<commit_sha7>
+docker pull docker.io/xisoul/nonebot-webui:0.4.2
+docker pull docker.io/xisoul/nonebot-webui:0.4
 ```
 
 ### 生产部署
@@ -207,6 +210,16 @@ Docker 运行模式下项目默认根目录为 `/projects`。
 ./build-and-export.sh
 ./deploy.sh
 ```
+
+默认情况下，这两个脚本都会自动读取 `pyproject.toml` 中的版本号作为 Docker tag。
+如果你想手动指定镜像版本，也可以直接传参：
+
+```shell
+./build-and-export.sh 0.4.2
+./deploy.sh 0.4.2
+```
+
+容器内显示的 WebUI 版本也会优先使用这个显式版本号，而不是 GitHub 随机 commit 字符串。
 
 本镜像当前不内置 Playwright Linux 系统依赖；若你管理的外部项目自身依赖 Playwright，请在对应项目运行环境中单独安装。
 

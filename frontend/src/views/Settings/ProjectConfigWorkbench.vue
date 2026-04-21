@@ -346,7 +346,7 @@ watch(
         <div class="flex flex-col gap-2">
           <h3 class="text-lg font-semibold">pyproject.toml</h3>
           <div class="text-sm opacity-70">
-            适配器、插件目录和项目元信息都在这里。保存后会自动同步实例元数据。
+            适配器、已配置插件、内置插件和本地插件目录都在这里。保存后会自动同步实例元数据。
           </div>
           <div class="bg-base-content/10 h-px"></div>
         </div>

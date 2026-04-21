@@ -129,7 +129,7 @@ onUnmounted(() => {
             <td>{{ store.template === 'bootstrap' ? '初学者 / 普通用户' : '开发者' }}</td>
           </tr>
           <tr v-if="store.template === 'simple'">
-            <th class="font-semibold text-base">实例插件加载位置</th>
+            <th class="font-semibold text-base">默认本地插件目录</th>
             <td>{{ store.useSrc ? '/src' : `/${store.projectName}` }}</td>
           </tr>
           <tr>

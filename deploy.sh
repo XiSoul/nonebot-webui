@@ -3,8 +3,8 @@
 # deploy.sh - 本地构建 Docker 镜像并部署到测试服务器
 #
 # 用法:
-#   ./deploy.sh              # 使用 git short hash 作为 tag
-#   ./deploy.sh v0.4.2       # 使用指定 tag
+#   ./deploy.sh              # 使用 pyproject.toml 里的版本号作为 tag
+#   ./deploy.sh 0.4.2        # 使用指定版本号
 #
 set -euo pipefail
 
@@ -18,8 +18,9 @@ CONTAINER_NAME="nonebot-webui"
 if [ -n "${1:-}" ]; then
   TAG="$1"
 else
-  TAG=$(git rev-parse --short HEAD)
+  TAG="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
 fi
+VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 FULL_IMAGE="${IMAGE_NAME}:${TAG}"
 
@@ -33,7 +34,8 @@ echo "========================================"
 echo ""
 echo "[1/4] Building Docker image..."
 docker build \
-  --build-arg SOURCE_COMMIT="$TAG" \
+  --build-arg APP_VERSION="$TAG" \
+  --build-arg VCS_REF="$VCS_REF" \
   --build-arg PYTHON_IMAGE=3.11 \
   --build-arg VARIANT=-slim \
   --build-arg APT_MIRROR="${APT_MIRROR:-${WEBUI_DEBIAN_MIRROR:-}}" \

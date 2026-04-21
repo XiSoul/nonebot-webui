@@ -82,8 +82,9 @@ async def write_to_process(
     process = await get_active_terminal_process(project, create_shell=True)
     if process is None:
         raise ProcessNotRunning()
-    result = await process.write_stdin(content.encode())
-    return GenericResponse(detail=result)
+
+    await execute_project_command(project, content)
+    return GenericResponse(detail=len(content.encode()))
 
 
 @router.post("/interrupt", response_model=GenericResponse[str])

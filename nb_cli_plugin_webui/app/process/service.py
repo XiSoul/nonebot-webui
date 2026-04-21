@@ -27,6 +27,20 @@ from .exceptions import DriverNotFound, AdapterNotFound
 
 
 SHELL_COMMAND_DONE_MARKER = "__NB_WEBUI_CMD_DONE__:"
+HTMLRENDER_DEPENDENCY_MARKERS = (
+    "nonebot-plugin-htmlrender",
+    "nonebot_plugin_htmlrender",
+)
+HTMLRENDER_PROJECT_FILES = (
+    "pyproject.toml",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "requirements-prod.txt",
+    "poetry.lock",
+    "uv.lock",
+    "Pipfile",
+    "Pipfile.lock",
+)
 
 
 class ProjectShellSessionManager:
@@ -85,6 +99,109 @@ def _pick_available_port(project_id: str) -> int:
     return 0
 
 
+def _load_project_env_data(project_meta, project_dir: Path) -> dict:
+    env_filename = str(getattr(project_meta, "use_env", "") or "").strip()
+    if not env_filename:
+        return {}
+
+    env_file = project_dir / env_filename
+    if not env_file.exists():
+        return {}
+
+    return dotenv_values(env_file)
+
+
+def _resolve_runtime_path(project_dir: Path, raw_value: str) -> str:
+    resolved = Path(os.path.expanduser(raw_value))
+    if not resolved.is_absolute():
+        resolved = project_dir / resolved
+    return str(resolved.absolute())
+
+
+def _project_mentions_htmlrender(project_meta, project_dir: Path) -> bool:
+    project_plugins = getattr(project_meta, "plugins", None) or []
+    for plugin in project_plugins:
+        plugin_module = str(getattr(plugin, "module_name", "") or "").lower()
+        plugin_link = str(getattr(plugin, "project_link", "") or "").lower()
+        plugin_name = str(getattr(plugin, "name", "") or "").lower()
+        if any(
+            marker in value
+            for marker in HTMLRENDER_DEPENDENCY_MARKERS
+            for value in (plugin_module, plugin_link, plugin_name)
+        ):
+            return True
+
+    for file_name in HTMLRENDER_PROJECT_FILES:
+        candidate = project_dir / file_name
+        if not candidate.is_file():
+            continue
+        try:
+            content = candidate.read_text(encoding="utf-8").lower()
+        except UnicodeDecodeError:
+            content = candidate.read_text(encoding="utf-8", errors="ignore").lower()
+        except Exception:
+            continue
+
+        if any(marker in content for marker in HTMLRENDER_DEPENDENCY_MARKERS):
+            return True
+
+    return False
+
+
+def _default_nonebot2_data_dir(env: dict) -> Path:
+    if sys.platform == "win32":
+        local_app_data = str(env.get("LOCALAPPDATA") or "").strip()
+        if local_app_data:
+            return Path(local_app_data) / "nonebot2"
+        home_dir = Path(str(env.get("USERPROFILE") or Path.home()))
+        return home_dir / "AppData" / "Local" / "nonebot2"
+
+    home_dir = Path(str(env.get("HOME") or Path.home()))
+    if sys.platform == "darwin":
+        return home_dir / "Library" / "Application Support" / "nonebot2"
+
+    data_home = str(env.get("XDG_DATA_HOME") or "").strip()
+    if data_home:
+        return Path(data_home) / "nonebot2"
+    return home_dir / ".local" / "share" / "nonebot2"
+
+
+def _apply_htmlrender_browser_path(env: dict, project_meta, project_dir: Path) -> None:
+    if str(env.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip():
+        return
+
+    env_data = _load_project_env_data(project_meta, project_dir)
+
+    explicit_browser_path = str(
+        env_data.get("PLAYWRIGHT_BROWSERS_PATH")
+        or env_data.get("playwright_browsers_path")
+        or ""
+    ).strip()
+    if explicit_browser_path:
+        env["PLAYWRIGHT_BROWSERS_PATH"] = _resolve_runtime_path(
+            project_dir, explicit_browser_path
+        )
+        return
+
+    htmlrender_storage_path = str(
+        env_data.get("htmlrender_storage_path")
+        or env_data.get("HTMLRENDER_STORAGE_PATH")
+        or ""
+    ).strip()
+    if htmlrender_storage_path:
+        env["PLAYWRIGHT_BROWSERS_PATH"] = _resolve_runtime_path(
+            project_dir, htmlrender_storage_path
+        )
+        return
+
+    if not _project_mentions_htmlrender(project_meta, project_dir):
+        return
+
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(
+        (_default_nonebot2_data_dir(env) / "nonebot_plugin_htmlrender").absolute()
+    )
+
+
 def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[dict, bool]:
     project_dir = Path(project_meta.project_dir)
     if pip_safe:
@@ -106,6 +223,8 @@ def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[
     virtual_env = project_dir / ".venv"
     if virtual_env.is_dir():
         env["VIRTUAL_ENV"] = str(virtual_env.absolute())
+
+    _apply_htmlrender_browser_path(env, project_meta, project_dir)
 
     return env, socks_proxy_disabled
 

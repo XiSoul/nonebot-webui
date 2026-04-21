@@ -184,6 +184,7 @@ export type NoneBotProjectMeta = {
   drivers: Array<nb_cli_plugin_webui__app__models__base__ModuleInfo>
   plugins: Array<nb_cli_plugin_webui__app__models__base__Plugin>
   plugin_dirs: Array<string>
+  discovered_plugin_dirs?: Array<string>
   builtin_plugins: Array<string>
   is_running?: boolean
   use_env?: string
@@ -210,6 +211,7 @@ export type ProjectTomlDetail = {
   }>
   plugins: Array<string>
   plugin_dirs: Array<string>
+  discovered_plugin_dirs: Array<string>
   builtin_plugins: Array<string>
 }
 

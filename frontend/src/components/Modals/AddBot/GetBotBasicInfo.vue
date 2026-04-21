@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ProjectService } from '@/client/api'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAddBotStore } from '.'
 
 const store = useAddBotStore()
 
 const inputValue = ref('')
+const discoveredOnlyPluginDirs = computed(() =>
+  store.discoveredPluginDirs.filter((dir) => !store.pluginDirs.includes(dir))
+)
 
 const search = async () => {
   if (!inputValue.value) {
@@ -28,6 +31,7 @@ const search = async () => {
     store.adapters = detail.adapters
     store.plugins = detail.plugins
     store.pluginDirs = detail.plugin_dirs
+    store.discoveredPluginDirs = detail.discovered_plugin_dirs ?? []
     store.builtinPlugins = detail.builtin_plugins
     store.projectPath = inputValue.value
 
@@ -96,7 +100,7 @@ const search = async () => {
         }"
       >
         <span class="font-semibold">
-          {{ store.plugins.length ? '已有插件:' : '未找到插件' }}
+          {{ store.plugins.length ? '已配置插件:' : '未配置插件' }}
         </span>
         <div class="flex items-center flex-wrap gap-2">
           <span
@@ -108,11 +112,16 @@ const search = async () => {
             {{ plugin }}
           </span>
         </div>
+        <span v-if="!store.plugins.length" class="text-sm opacity-70">
+          这里显示的是 <span class="font-mono">tool.nonebot.plugins</span> 里声明的插件；
+          大多数通过 pip 安装的插件本体都在项目的
+          <span class="font-mono">.venv/site-packages</span> 中，而不是本地插件目录。
+        </span>
       </div>
 
       <div class="flex flex-col gap-2 rounded-lg p-4 bg-base-200">
         <span class="font-semibold">
-          {{ store.pluginDirs.length ? '已有插件目录:' : '未配置插件目录' }}
+          {{ store.pluginDirs.length ? '已声明本地插件目录:' : '未声明本地插件目录' }}
         </span>
         <div v-if="store.pluginDirs.length" class="flex items-center flex-wrap gap-2">
           <span
@@ -125,8 +134,33 @@ const search = async () => {
           </span>
         </div>
         <span v-else class="text-sm opacity-70">
-          当前项目没有在配置里声明 <span class="font-mono">plugin_dirs</span>，这不影响继续导入；
-          已安装插件仍会按项目配置读取。
+          当前项目没有在 <span class="font-mono">tool.nonebot.plugin_dirs</span> 中声明本地插件目录。
+          这不影响继续导入，也不代表项目没有安装插件。
+        </span>
+      </div>
+
+      <div
+        :class="{
+          'flex flex-col gap-2 rounded-lg p-4 bg-base-200': true,
+          'opacity-50': !discoveredOnlyPluginDirs.length
+        }"
+      >
+        <span class="font-semibold">
+          {{ discoveredOnlyPluginDirs.length ? '扫描到的候选本地插件目录:' : '未扫描到额外候选目录' }}
+        </span>
+        <div v-if="discoveredOnlyPluginDirs.length" class="flex items-center flex-wrap gap-2">
+          <span
+            v-for="plugin_dir in discoveredOnlyPluginDirs"
+            :key="plugin_dir"
+            role="button"
+            class="badge badge-lg !bg-base-100"
+          >
+            {{ plugin_dir }}
+          </span>
+        </div>
+        <span v-if="discoveredOnlyPluginDirs.length" class="text-sm opacity-70">
+          这些目录是根据常见目录结构自动识别出来的，仅供你核对；
+          它们当前并不等于项目已经声明的 <span class="font-mono">plugin_dirs</span> 配置。
         </span>
       </div>
     </div>

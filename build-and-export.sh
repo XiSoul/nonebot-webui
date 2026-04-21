@@ -3,7 +3,9 @@
 set -euo pipefail
 
 IMAGE_NAME="nonebot-webui"
-TAG="${1:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+DEFAULT_TAG="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
+TAG="${1:-${DEFAULT_TAG:-latest}}"
+VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 OUTPUT_DIR="${OUTPUT_DIR:-./dist-images}"
 ARCHIVE_NAME="${IMAGE_NAME}-${TAG}.tar"
 ARCHIVE_PATH="${OUTPUT_DIR}/${ARCHIVE_NAME}"
@@ -19,7 +21,8 @@ echo "[1/3] 构建 Docker 镜像..."
 docker build \
   -t "${IMAGE_NAME}:${TAG}" \
   -t "${IMAGE_NAME}:latest" \
-  --build-arg SOURCE_COMMIT="${TAG}" \
+  --build-arg APP_VERSION="${TAG}" \
+  --build-arg VCS_REF="${VCS_REF}" \
   --build-arg PYTHON_IMAGE=3.11 \
   --build-arg VARIANT=-slim \
   --build-arg APT_MIRROR="${APT_MIRROR:-${WEBUI_DEBIAN_MIRROR:-}}" \

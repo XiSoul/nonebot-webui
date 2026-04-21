@@ -74,6 +74,7 @@ class NoneBotProjectMeta(BaseModel, Generic[_T]):
     drivers: List[ModuleInfo]
     plugins: List[_T]
     plugin_dirs: List[str]
+    discovered_plugin_dirs: List[str] = Field(default_factory=list)
     builtin_plugins: List[str]
 
     is_running: bool = False

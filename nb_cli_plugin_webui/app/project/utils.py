@@ -81,17 +81,16 @@ def get_nonebot_info_from_toml(working_dir: Path) -> ProjectTomlDetail:
     adapters = _normalize_adapters(nonebot_info.get("adapters", list()))
     plugins = _normalize_string_list(nonebot_info.get("plugins", list()))
     plugin_dirs = _normalize_string_list(nonebot_info.get("plugin_dirs", list()))
+    discovered_plugin_dirs = _discover_plugin_dirs(working_dir, project_name)
     builtin_plugins = _normalize_string_list(
         nonebot_info.get("builtin_plugins", list())
     )
-
-    if not plugin_dirs:
-        plugin_dirs = _discover_plugin_dirs(working_dir, project_name)
 
     return ProjectTomlDetail(
         project_name=project_name,
         adapters=adapters,
         plugins=plugins,
         plugin_dirs=plugin_dirs,
+        discovered_plugin_dirs=discovered_plugin_dirs,
         builtin_plugins=builtin_plugins,
     )

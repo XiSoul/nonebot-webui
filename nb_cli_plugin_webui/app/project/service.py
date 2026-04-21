@@ -32,6 +32,7 @@ from .exceptions import (
     ProjectPortAlreadyExists,
 )
 from .schemas import AddProjectData, CreateProjectData
+from .utils import get_nonebot_info_from_toml
 
 
 def _driver_sort_key(driver: ModuleInfo) -> int:
@@ -74,6 +75,13 @@ def _dedupe_packages(packages: List[str]) -> List[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _safe_get_project_toml_detail(project_dir: Path):
+    try:
+        return get_nonebot_info_from_toml(project_dir)
+    except Exception:
+        return None
 
 
 def _resolve_imported_project_drivers(project_dir: Path, env_name: str) -> List[ModuleInfo]:
@@ -434,6 +442,10 @@ def create_nonebot_project(data: CreateProjectData) -> str:
         _drivers: List[ModuleInfo] = [
             ModuleInfo.parse_obj(driver.dict()) for driver in sorted_drivers
         ]
+        project_detail = _safe_get_project_toml_detail(project_dir)
+        discovered_plugin_dirs = (
+            project_detail.discovered_plugin_dirs if project_detail else plugin_dirs[:]
+        )
 
         project_id = generate_complexity_string(6)
         manager = NoneBotProjectManager(project_id=project_id)
@@ -452,6 +464,7 @@ def create_nonebot_project(data: CreateProjectData) -> str:
             adapters=_adapters,
             drivers=_drivers,
             plugin_dirs=plugin_dirs,
+            discovered_plugin_dirs=discovered_plugin_dirs,
         )
 
         manager.write_to_env(".env", "ENVIRONMENT", "prod")
@@ -473,18 +486,37 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     if not project_dir.is_dir():
         raise ProjectDirIsNotDir()
     ensure_project_dir_is_unique(project_dir)
+    project_detail = _safe_get_project_toml_detail(project_dir)
 
     current_env = resolve_project_use_env(project_dir)
     configured_port = get_project_env_port(project_dir, current_env)
     ensure_project_port_is_unique(configured_port)
     stored_drivers = _resolve_imported_project_drivers(project_dir, current_env)
 
+    resolved_adapter_names = [
+        str(adapter.get("module_name", "")).strip()
+        for adapter in (project_detail.adapters if project_detail else [])
+        if str(adapter.get("module_name", "")).strip()
+    ] or data.adapters
+    resolved_plugin_names = (
+        project_detail.plugins if project_detail else data.plugins
+    )
+    resolved_plugin_dirs = (
+        project_detail.plugin_dirs if project_detail else data.plugin_dirs
+    )
+    discovered_plugin_dirs = (
+        project_detail.discovered_plugin_dirs if project_detail else []
+    )
+    resolved_builtin_plugins = (
+        project_detail.builtin_plugins if project_detail else data.builtin_plugins
+    )
+
     store_plugin_data = get_store_items(ModuleType.PLUGIN, is_search=False)
     store_adapter_data = get_store_items(ModuleType.ADAPTER, is_search=False)
 
     store_plugin_map = {plugin.module_name: plugin for plugin in store_plugin_data}
     stored_plugins: List[Plugin] = []
-    for plugin_name in data.plugins:
+    for plugin_name in resolved_plugin_names:
         plugin = store_plugin_map.get(plugin_name)
         if plugin is not None:
             stored_plugins.append(plugin)
@@ -501,7 +533,7 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     store_adapter_map = {adapter.module_name: adapter for adapter in store_adapter_data}
     stored_adapters: List[ModuleInfo] = []
     installable_adapters: List[ModuleInfo] = []
-    for adapter_name in data.adapters:
+    for adapter_name in resolved_adapter_names:
         adapter = store_adapter_map.get(adapter_name)
         if adapter is not None:
             stored_adapters.append(adapter)
@@ -534,10 +566,12 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     process.add(log.add_log, CustomLog(message=f"Project dir: {project_dir}"))
     process.add(log.add_log, CustomLog(message=f"Mirror url: {data.mirror_url}"))
     process.add(
-        log.add_log, CustomLog(message=f"Project plugins: {', '.join(data.plugins)}")
+        log.add_log,
+        CustomLog(message=f"Project plugins: {', '.join(resolved_plugin_names)}"),
     )
     process.add(
-        log.add_log, CustomLog(message=f"Project adapters: {', '.join(data.adapters)}")
+        log.add_log,
+        CustomLog(message=f"Project adapters: {', '.join(resolved_adapter_names)}"),
     )
     process.add(log.add_log, CustomLog(message=str()))
 
@@ -605,8 +639,9 @@ async def add_nonebot_project(data: AddProjectData) -> str:
         adapters=stored_adapters,
         drivers=stored_drivers,
         plugins=stored_plugins,
-        plugin_dirs=data.plugin_dirs,
-        builtin_plugins=data.builtin_plugins,
+        plugin_dirs=resolved_plugin_dirs,
+        discovered_plugin_dirs=discovered_plugin_dirs,
+        builtin_plugins=resolved_builtin_plugins,
         use_env=current_env,
     )
 

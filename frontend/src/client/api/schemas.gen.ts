@@ -684,6 +684,13 @@ export const NoneBotProjectMetaSchema = {
         type: 'string'
       }
     },
+    discovered_plugin_dirs: {
+      title: 'Discovered Plugin Dirs',
+      type: 'array',
+      items: {
+        type: 'string'
+      }
+    },
     builtin_plugins: {
       title: 'Builtin Plugins',
       type: 'array',
@@ -756,7 +763,14 @@ export const ProcessLogSchema = {
 
 export const ProjectTomlDetailSchema = {
   title: 'ProjectTomlDetail',
-  required: ['project_name', 'adapters', 'plugins', 'plugin_dirs', 'builtin_plugins'],
+  required: [
+    'project_name',
+    'adapters',
+    'plugins',
+    'plugin_dirs',
+    'discovered_plugin_dirs',
+    'builtin_plugins'
+  ],
   type: 'object',
   properties: {
     project_name: {
@@ -782,6 +796,13 @@ export const ProjectTomlDetailSchema = {
     },
     plugin_dirs: {
       title: 'Plugin Dirs',
+      type: 'array',
+      items: {
+        type: 'string'
+      }
+    },
+    discovered_plugin_dirs: {
+      title: 'Discovered Plugin Dirs',
       type: 'array',
       items: {
         type: 'string'

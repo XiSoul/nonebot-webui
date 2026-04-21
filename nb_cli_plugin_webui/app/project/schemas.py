@@ -11,6 +11,7 @@ class ProjectTomlDetail(BaseModel):
     adapters: List[Dict[str, str]]
     plugins: List[str]
     plugin_dirs: List[str]
+    discovered_plugin_dirs: List[str]
     builtin_plugins: List[str]
 
 

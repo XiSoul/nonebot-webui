@@ -1,4 +1,5 @@
-ARG SOURCE_COMMIT=
+ARG APP_VERSION=0.4.2
+ARG VCS_REF=
 ARG PYTHON_IMAGE=3.11
 ARG VARIANT=
 ARG APT_MIRROR=
@@ -21,6 +22,8 @@ RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
+ARG APP_VERSION=0.4.2
+ARG VCS_REF=unknown
 ARG PIP_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL
 ARG PIP_TRUSTED_HOST
@@ -48,17 +51,28 @@ RUN pip install --no-deps .
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 
+ARG APP_VERSION=0.4.2
+ARG VCS_REF=unknown
 ARG APT_MIRROR
 
 EXPOSE 18080
 
-ENV WEBUI_BUILD=${SOURCE_COMMIT}
+LABEL org.opencontainers.image.version="${APP_VERSION}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+
+ENV WEBUI_BUILD=1
+ENV WEBUI_VERSION=${APP_VERSION}
+ENV WEBUI_VCS_REF=${VCS_REF}
 ENV DEBIAN_FRONTEND=noninteractive
 
 COPY --from=build-stage /usr/local /usr/local
 COPY --from=build-stage /app /app
 
 WORKDIR /app
+
+RUN mkdir -p /usr/local/share/nb-cli-plugin-webui \
+    && printf '%s' "${APP_VERSION}" > /usr/local/share/nb-cli-plugin-webui/version \
+    && printf '%s' "${VCS_REF}" > /usr/local/share/nb-cli-plugin-webui/revision
 
 RUN if [ -n "$APT_MIRROR" ]; then \
       mirror="${APT_MIRROR%/}"; \
@@ -91,7 +105,27 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         libxcursor1 \
         libgbm1 \
         libgtk-3-0 \
+        libgtk-4-1 \
+        libgstreamer1.0-0 \
+        libgstreamer-plugins-base1.0-0 \
+        libgstreamer-gl1.0-0 \
+        libgstreamer-plugins-bad1.0-0 \
+        libgraphene-1.0-0 \
+        libvulkan1 \
+        libwoff1 \
+        libvpx9 \
+        libopus0 \
+        libflite1 \
+        libjxl0.11 \
+        libavif16 \
+        libenchant-2-2 \
+        libsecret-1-0 \
+        libhyphen0 \
+        libmanette-0.2-0 \
+        libgles2 \
+        libx264-164 \
         libasound2t64 \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libx264.so.164 /usr/lib/x86_64-linux-gnu/libx264.so \
     && rm -rf /var/lib/apt/lists/*
 
 CMD nb ui run
