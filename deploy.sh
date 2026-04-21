@@ -37,7 +37,7 @@ docker build \
   --build-arg APP_VERSION="$TAG" \
   --build-arg VCS_REF="$VCS_REF" \
   --build-arg PYTHON_IMAGE=3.11 \
-  --build-arg VARIANT=-slim \
+  --build-arg VARIANT=slim \
   --build-arg APT_MIRROR="${APT_MIRROR:-${WEBUI_DEBIAN_MIRROR:-}}" \
   --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-${WEBUI_PIP_INDEX_URL:-}}" \
   --build-arg PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-${WEBUI_PIP_EXTRA_INDEX_URL:-}}" \

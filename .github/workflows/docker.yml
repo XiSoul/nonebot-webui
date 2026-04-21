@@ -89,7 +89,7 @@ jobs:
             APP_VERSION=${{ steps.app_version.outputs.VERSION }}
             VCS_REF=${{ github.sha }}
             PYTHON_IMAGE=3.11
-            VARIANT=-slim
+            VARIANT=slim
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
