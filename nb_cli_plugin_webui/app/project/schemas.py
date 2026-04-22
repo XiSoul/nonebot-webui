@@ -8,6 +8,7 @@ from nb_cli_plugin_webui.app.models.base import ModuleInfo, NoneBotProjectMeta
 
 class ProjectTomlDetail(BaseModel):
     project_name: str
+    resolved_project_dir: str = ""
     adapters: List[Dict[str, str]]
     plugins: List[str]
     plugin_dirs: List[str]

@@ -33,7 +33,7 @@ const search = async () => {
     store.pluginDirs = detail.plugin_dirs
     store.discoveredPluginDirs = detail.discovered_plugin_dirs ?? []
     store.builtinPlugins = detail.builtin_plugins
-    store.projectPath = inputValue.value
+    store.projectPath = detail.resolved_project_dir || inputValue.value
 
     store.searchBotSuccess = true
     store.warningMessage = ''
@@ -47,19 +47,22 @@ const search = async () => {
     <div v-if="!store.searchBotSuccess" class="flex flex-col justify-center gap-4 w-full max-w-xs">
       <div class="form-control">
         <div class="label">
-          <span class="label-text">实例绝对路径</span>
+          <span class="label-text">实例路径</span>
         </div>
         <input
           v-model="inputValue"
           type="text"
-          placeholder="请输入"
+          placeholder="如 3998382152 或 /external-projects/3998382152"
           class="input input-bordered w-full max-w-xs"
           required
         />
         <div class="label">
           <span class="label-text-alt leading-5">
-            Docker 或容器部署时，这里要填写容器内的绝对路径，例如
-            <span class="font-mono">/external-projects/3998382152</span>，不是宿主机路径。
+            现在支持相对路径和容器内绝对路径，例如
+            <span class="font-mono">3998382152</span>、
+            <span class="font-mono">external-projects/3998382152</span>、
+            <span class="font-mono">/external-projects/3998382152</span>。
+            如果是 Docker 部署，依然不能填写 NAS 或宿主机自己的真实路径。
           </span>
         </div>
       </div>
@@ -70,6 +73,11 @@ const search = async () => {
       <div class="flex gap-4 rounded-lg p-4 bg-base-200">
         <span class="font-semibold">实例名称:</span>
         {{ store.projectName }}
+      </div>
+
+      <div class="flex gap-4 rounded-lg p-4 bg-base-200">
+        <span class="font-semibold">实际项目路径:</span>
+        <span class="font-mono break-all">{{ store.projectPath }}</span>
       </div>
 
       <div

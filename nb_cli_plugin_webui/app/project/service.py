@@ -1,7 +1,9 @@
 import json
+import os
 import re
 import asyncio
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from cookiecutter.exceptions import OutputDirExistsException
@@ -15,6 +17,7 @@ from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.models.types import ModuleType
 from nb_cli_plugin_webui.app.store.dependencies import get_store_items
 from nb_cli_plugin_webui.app.models.base import ModuleInfo, NoneBotProjectMeta, Plugin
+from nb_cli_plugin_webui.app.utils.python_env import resolve_project_python_path
 from nb_cli_plugin_webui.app.utils.string_utils import generate_complexity_string
 from nb_cli_plugin_webui.app.handlers import NoneBotProjectManager, call_pip_install
 from nb_cli_plugin_webui.app.handlers.process import (
@@ -30,9 +33,13 @@ from .exceptions import (
     ProjectDirIsNotDir,
     ProjectNameAlreadyExists,
     ProjectPortAlreadyExists,
+    ProjectTomlNotFound,
 )
 from .schemas import AddProjectData, CreateProjectData
-from .utils import get_nonebot_info_from_toml
+from .utils import (
+    get_nonebot_info_from_toml,
+    resolve_nonebot_project_dir,
+)
 
 
 def _driver_sort_key(driver: ModuleInfo) -> int:
@@ -190,6 +197,117 @@ async def _get_installed_distribution_names(
         for package_name in package_names
         if str(package_name).strip()
     }
+
+
+def _venv_python_path(venv_path: Path) -> Path:
+    if os.name == "nt":
+        return venv_path / "Scripts" / "python.exe"
+    return venv_path / "bin" / "python"
+
+
+async def _validate_python_runtime(
+    python_path: Path,
+) -> Tuple[bool, str]:
+    script = (
+        "import json, sys, encodings\n"
+        "print(json.dumps({'executable': sys.executable}))\n"
+    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            str(python_path),
+            "-c",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as err:
+        return False, str(err)
+
+    stdout, stderr = await process.communicate()
+    stdout_text = stdout.decode("utf-8", "replace").strip()
+    stderr_text = stderr.decode("utf-8", "replace").strip()
+
+    if process.returncode != 0:
+        return False, stderr_text or stdout_text or f"exit code: {process.returncode}"
+
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return False, stdout_text or stderr_text or "invalid runtime output"
+
+    if not isinstance(payload, dict) or not str(payload.get("executable") or "").strip():
+        return False, "python runtime probe returned empty executable"
+
+    return True, ""
+
+
+async def _ensure_project_virtualenv(
+    project_dir: Path,
+    project_name: str,
+    log: Optional[LogStorage] = None,
+) -> str:
+    venv_path = project_dir / ".venv"
+    python_path = _venv_python_path(venv_path)
+
+    async def _write_log(level: str, message: str) -> None:
+        if log is None:
+            return
+        await log.add_log(CustomLog(level=level, message=message))
+
+    async def _create() -> str:
+        await create_virtualenv(venv_path, prompt=project_name, python_path=None)
+        created_python = _venv_python_path(venv_path)
+        if not created_python.exists():
+            raise FileNotFoundError(str(created_python))
+        return str(created_python.absolute())
+
+    if not venv_path.exists():
+        await _write_log("INFO", f"Not found virtualenv in {venv_path.absolute()}")
+        await _write_log("INFO", "Initialization dependencies...")
+        return await _create()
+
+    if not venv_path.is_dir():
+        backup_path = venv_path.with_name(
+            f".venv.webui-invalid-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+        await _write_log(
+            "WARNING",
+            f"Found invalid virtualenv entry, backup to {backup_path.absolute()}",
+        )
+        await asyncio.to_thread(shutil.move, str(venv_path), str(backup_path))
+        await _write_log("INFO", "Initialization dependencies...")
+        return await _create()
+
+    if not python_path.exists():
+        backup_path = venv_path.with_name(
+            f".venv.webui-missing-python-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+        await _write_log(
+            "WARNING",
+            "Virtualenv python executable is missing, "
+            f"backup old environment to {backup_path.absolute()}",
+        )
+        await asyncio.to_thread(shutil.move, str(venv_path), str(backup_path))
+        await _write_log("INFO", "Initialization dependencies...")
+        return await _create()
+
+    is_valid, error_message = await _validate_python_runtime(python_path)
+    if is_valid:
+        return str(python_path.absolute())
+
+    backup_path = venv_path.with_name(
+        f".venv.webui-broken-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
+    await _write_log(
+        "WARNING",
+        "Current virtualenv is unavailable, "
+        f"backup old environment to {backup_path.absolute()}",
+    )
+    if error_message:
+        await _write_log("WARNING", f"Virtualenv validation failed: {error_message}")
+    await asyncio.to_thread(shutil.move, str(venv_path), str(backup_path))
+    await _write_log("INFO", "Initialization dependencies...")
+    return await _create()
 
 
 def _can_reset_project_dir(project_dir: Path, base_project_dir: Path) -> bool:
@@ -419,7 +537,9 @@ def create_nonebot_project(data: CreateProjectData) -> str:
     process.add(log.add_log, CustomLog(message="Install dependencies..."))
 
     async def install_dependencies():
-        python_path = ConfigManager(working_dir=project_dir, use_venv=True).python_path
+        python_path = resolve_project_python_path(project_dir) or ConfigManager(
+            working_dir=project_dir, use_venv=True
+        ).python_path
         packages = _dedupe_packages(["nonebot2", *context.packages])
         proc, _ = await call_pip_install(
             packages,
@@ -482,9 +602,13 @@ def create_nonebot_project(data: CreateProjectData) -> str:
 async def add_nonebot_project(data: AddProjectData) -> str:
     project_name = normalize_project_name(data.project_name)
     ensure_project_name_is_unique(project_name)
-    project_dir = Path(data.project_dir)
-    if not project_dir.is_dir():
-        raise ProjectDirIsNotDir()
+    try:
+        project_dir = resolve_nonebot_project_dir(data.project_dir)
+    except FileNotFoundError:
+        raw_project_dir = Path(data.project_dir)
+        if not raw_project_dir.is_dir():
+            raise ProjectDirIsNotDir()
+        raise ProjectTomlNotFound()
     ensure_project_dir_is_unique(project_dir)
     project_detail = _safe_get_project_toml_detail(project_dir)
 
@@ -552,6 +676,12 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     context.variables["adapters"] = json.dumps(
         {adapter.project_link: adapter.dict() for adapter in installable_adapters}
     )
+    installable_drivers = [
+        driver.project_link
+        for driver in stored_drivers
+        if str(driver.project_link or "").strip()
+    ]
+    context.packages.extend(installable_drivers)
     context.packages.extend([adapter.project_link for adapter in installable_adapters])
 
     log = LogStorage(Config.process_log_destroy_seconds)
@@ -575,25 +705,25 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     )
     process.add(log.add_log, CustomLog(message=str()))
 
-    venv_path = project_dir / ".venv"
-    if not venv_path.is_dir():
-        process.add(
-            log.add_log,
-            CustomLog(message=f"Not found virtualenv in {venv_path.absolute()}"),
+    venv_python_path: Dict[str, str] = {"value": ""}
+
+    async def ensure_virtualenv():
+        venv_python_path["value"] = await _ensure_project_virtualenv(
+            project_dir, project_name, log
         )
-        process.add(log.add_log, CustomLog(message="Initialization dependencies..."))
-        process.add(
-            create_virtualenv,
-            project_dir / ".venv",
-            prompt=project_name,
-            python_path=None,
-        )
+        return True
+
+    process.add(ensure_virtualenv)
     process.add(log.add_log, CustomLog(message="Finished initialization."))
 
     process.add(log.add_log, CustomLog(message="Install dependencies..."))
 
     async def install_dependencies():
-        python_path = ConfigManager(working_dir=project_dir, use_venv=True).python_path
+        python_path = (
+            venv_python_path["value"]
+            or resolve_project_python_path(project_dir)
+            or ConfigManager(working_dir=project_dir, use_venv=True).python_path
+        )
         packages = _dedupe_packages(["nonebot2", *context.packages])
         installed_package_names = await _get_installed_distribution_names(
             python_path, log
@@ -643,7 +773,16 @@ async def add_nonebot_project(data: AddProjectData) -> str:
         discovered_plugin_dirs=discovered_plugin_dirs,
         builtin_plugins=resolved_builtin_plugins,
         use_env=current_env,
+        sync_plugin_config=False,
     )
+
+    async def sync_project_metadata():
+        await manager.sync_from_project_toml()
+        return True
+
+    process.add(log.add_log, CustomLog(message="Sync project metadata..."))
+    process.add(sync_project_metadata)
+    process.add(log.add_log, CustomLog(message="Finished sync."))
 
     env_path = project_dir / ".env"
     if not env_path.exists() or not env_path.is_file():

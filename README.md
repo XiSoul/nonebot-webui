@@ -24,7 +24,7 @@ _✨ NoneBot2 命令行工具 前端可视化页面（WebUI） 插件 ✨_
   </a>
   <br />
   <a href="https://jq.qq.com/?_wv=1027&k=5OFifDh">
-    <img src="https://img.shields.io/badge/QQ%E7%BE%A4-768887710-orange?style=flat-square" alt="QQ Chat Group">
+    <img src="https://img.shields.io/badge/QQ%E7%BE%A4-1074735930-orange?style=flat-square" alt="QQ Chat Group">
   </a>
   <a href="https://qun.qq.com/qqweb/qunpro/share?_wv=3&_wwv=128&appChannel=share&inviteCode=7b4a3&appChannel=share&businessType=9&from=246610&biz=ka">
     <img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-NoneBot-5492ff?style=flat-square" alt="QQ Channel">
@@ -53,6 +53,7 @@ _✨ NoneBot2 命令行工具 前端可视化页面（WebUI） 插件 ✨_
 
 - 创建实例、接入已有实例、切换当前实例
 - 实例列表集中展示实例名称、运行状态、路径信息
+- 添加已有实例时支持相对路径和容器内绝对路径，系统会自动解析为运行时真实路径
 - 支持在实例选择页直接切换运行环境：`.env` / `.env.prod`
 - 支持实例启停、重启、删除和状态同步
 
@@ -135,18 +136,11 @@ nb self install nb-cli-plugin-webui
 使用 Docker 运行
 
 ```shell
-docker pull ghcr.io/xisoul/nonebot-webui:latest
-```
-
-或从 Docker Hub 拉取:
-
-```shell
 docker pull docker.io/xisoul/nonebot-webui:latest
 ```
 
-当前 GitHub Actions 会在构建成功后同时推送到以下仓库:
+当前默认推荐直接使用 Docker Hub 镜像，下载链路相对更稳定：
 
-- `ghcr.io/xisoul/nonebot-webui`
 - `docker.io/xisoul/nonebot-webui`
 
 Docker 镜像可以选择以下版本:
@@ -160,11 +154,6 @@ Docker 镜像可以选择以下版本:
 例如:
 
 ```shell
-docker pull ghcr.io/xisoul/nonebot-webui:latest
-docker pull ghcr.io/xisoul/nonebot-webui:master
-docker pull ghcr.io/xisoul/nonebot-webui:0.4.2
-docker pull ghcr.io/xisoul/nonebot-webui:0.4
-
 docker pull docker.io/xisoul/nonebot-webui:latest
 docker pull docker.io/xisoul/nonebot-webui:master
 docker pull docker.io/xisoul/nonebot-webui:0.4.2
@@ -173,9 +162,8 @@ docker pull docker.io/xisoul/nonebot-webui:0.4
 
 ### 生产部署
 
-推荐使用 GitHub Actions 构建并推送正式版镜像，镜像仓库如下：
+生产部署文档和默认示例统一使用 Docker Hub 镜像：
 
-- `ghcr.io/xisoul/nonebot-webui`
 - `docker.io/xisoul/nonebot-webui`
 
 测试服部署默认使用以下运行参数：
@@ -191,7 +179,7 @@ docker run -d \
   -v /home/xisoul/nonebot-webui-external-projects:/external-projects \
   -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
   -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
-  ghcr.io/xisoul/nonebot-webui:latest
+  docker.io/xisoul/nonebot-webui:latest
 ```
 
 部署前请确保以下路径存在且可写：
@@ -203,6 +191,15 @@ docker run -d \
 
 注意：`/app/config.json` 与 `/app/project.json` 会在运行时被程序写回，不能只读挂载。
 Docker 运行模式下项目默认根目录为 `/projects`。
+
+添加已有实例时，实例路径支持以下几种写法：
+
+- `3998382152`
+- `external-projects/3998382152`
+- `/external-projects/3998382152`
+
+WebUI 会自动把它解析并保存为容器内的真实绝对路径。
+如果当前是 Docker 部署，不要填写 NAS 或宿主机自己的物理路径，例如 `/vol1/...`、`/volume1/...`、`/home/...` 这类容器外路径。
 
 如需本地打包后手工部署，可使用：
 
@@ -235,14 +232,16 @@ WebUI 登录使用“登录凭证”换取 JWT 会话：
 因此，登录凭证本身不能直接作为 `Authorization: Bearer <token>` 使用。
 
 
-```shell
-docker run -it --rm -p 18080:18080 -v ./:/app ghcr.io/xisoul/nonebot-webui:latest --help
-```
-
-或使用 Docker Hub 镜像:
+可用下面这组命令快速验证镜像是否能正常启动：
 
 ```shell
-docker run -it --rm -p 18080:18080 -v ./:/app docker.io/xisoul/nonebot-webui:latest --help
+docker run -d --rm \
+  --name nonebot-webui-test \
+  -p 18080:18080 \
+  docker.io/xisoul/nonebot-webui:latest
+
+docker logs nonebot-webui-test
+docker rm -f nonebot-webui-test
 ```
 
 可选附加 env 参数:
@@ -298,10 +297,10 @@ docker run -it --rm \
   -e WEBUI_HTTP_PROXY=http://host.docker.internal:7890 \
   -e WEBUI_HTTPS_PROXY=http://host.docker.internal:7890 \
   -e WEBUI_SOURCE_PRESET=tuna \
-  ghcr.io/xisoul/nonebot-webui:latest
+  docker.io/xisoul/nonebot-webui:latest
 ```
 
-使用 Docker Hub 镜像时，只需要把镜像名替换为:
+镜像默认使用 Docker Hub:
 
 ```shell
 docker.io/xisoul/nonebot-webui:latest
@@ -314,5 +313,5 @@ docker run -it --rm \
   -p 18080:18080 \
   -v ./:/app \
   -e WEBUI_AUTO_BEST_PRESET=1 \
-  ghcr.io/xisoul/nonebot-webui:latest
+  docker.io/xisoul/nonebot-webui:latest
 ```

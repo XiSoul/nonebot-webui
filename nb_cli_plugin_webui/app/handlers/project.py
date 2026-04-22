@@ -15,6 +15,7 @@ from nb_cli.config.parser import CONFIG_FILE_ENCODING
 from nb_cli_plugin_webui.app.handlers import get_pkg_version
 from nb_cli_plugin_webui.app.utils.storage import get_data_file
 from nb_cli_plugin_webui.app.utils.openapi import resolve_references
+from nb_cli_plugin_webui.app.utils.python_env import resolve_project_python_path
 from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProjectMeta
 from .nonebot import (
     get_nonebot_loaded_plugins,
@@ -124,8 +125,11 @@ class NoneBotProjectManager:
         info = data.get(self.project_id)
         if info is None:
             raise ProjectNotFoundError
+        resolved_python_path = resolve_project_python_path(Path(info.project_dir))
         self.config_manager = ConfigManager(
-            working_dir=Path(info.project_dir), use_venv=True
+            working_dir=Path(info.project_dir),
+            use_venv=True,
+            python_path=resolved_python_path or None,
         )
         self._refresh_discovered_plugin_dirs(info)
 
@@ -204,6 +208,7 @@ class NoneBotProjectManager:
         discovered_plugin_dirs: List[str] = list(),
         builtin_plugins: List[str] = list(),
         use_env: str = ".env",
+        sync_plugin_config: bool = True,
     ) -> None:
         self.store(
             NoneBotProjectMeta(
@@ -220,7 +225,8 @@ class NoneBotProjectManager:
                 use_env=use_env,
             )
         )
-        await self.update_plugin_config()
+        if sync_plugin_config:
+            await self.update_plugin_config()
 
     def remove_project(self) -> None:
         data = self._load()

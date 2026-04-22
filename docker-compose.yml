@@ -1,6 +1,6 @@
 services:
   nonebot-webui:
-    image: ghcr.io/xisoul/nonebot-webui:latest
+    image: docker.io/xisoul/nonebot-webui:latest
     container_name: nonebot-webui
     restart: always
     network_mode: host

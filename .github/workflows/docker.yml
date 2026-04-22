@@ -151,7 +151,11 @@ jobs:
               sudo chmod 666 "$file"
             done
 
-            IMAGE="ghcr.io/${{ github.repository_owner }}/nonebot-webui:${{ needs.build.outputs.image_tag }}"
+            if [[ -n "${{ env.DOCKERHUB_USERNAME }}" ]]; then
+              IMAGE="docker.io/${{ env.DOCKERHUB_USERNAME }}/nonebot-webui:${{ needs.build.outputs.image_tag }}"
+            else
+              IMAGE="ghcr.io/${{ github.repository_owner }}/nonebot-webui:${{ needs.build.outputs.image_tag }}"
+            fi
 
             docker_cmd pull "$IMAGE"
             docker_cmd rm -f nonebot-webui 2>/dev/null || true

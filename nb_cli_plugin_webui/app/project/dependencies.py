@@ -7,7 +7,7 @@ from nb_cli_plugin_webui.app.logging import logger as log
 from nb_cli_plugin_webui.app.handlers import NoneBotProjectManager
 
 from .schemas import ProjectTomlDetail
-from .utils import get_nonebot_info_from_toml
+from .utils import get_nonebot_info_from_toml, resolve_nonebot_project_dir
 from .exceptions import ProjectTomlNotFound, NoneBotProjectNotFound
 
 
@@ -21,8 +21,8 @@ def get_nonebot_project_manager(project_id: str) -> NoneBotProjectManager:
 
 
 def get_nonebot_project_toml(project_dir: str) -> ProjectTomlDetail:
-    path = Path(project_dir)
     try:
+        path = resolve_nonebot_project_dir(project_dir)
         toml_data = get_nonebot_info_from_toml(path)
     except FileNotFoundError:
         raise ProjectTomlNotFound()

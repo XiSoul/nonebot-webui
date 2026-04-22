@@ -14,6 +14,7 @@ __pycache__
 *.py[cod]
 *.egg-info
 .venv
+.tmp-poetry311
 venv
 .tox
 .nox
@@ -49,11 +50,15 @@ docs/
 *.tar.gz
 *.tgz
 dist_chunks/
+dist_pkg/
 temp_filemanager_remote*.js
 deploy_nonebot_*.sh
+*.log
 
 # Dev container
 .devcontainer
+.claude
+data/
 
 # Scripts (dev only)
 script/

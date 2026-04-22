@@ -10,6 +10,7 @@ export interface RouteRecordRawRebuild extends RouteInfo {
 export interface NavItem {
   googleIcon?: string
   name: string
+  placement?: 'main' | 'footer'
   routeData: RouteRecordRawRebuild
 }
 
@@ -39,15 +40,6 @@ export const defaultRoutes: NavItem[] = [
       path: '/operation',
       name: 'Operation',
       component: () => import('@/views/Operation/OperationIndex.vue')
-    }
-  },
-  {
-    googleIcon: 'terminal',
-    name: '终端',
-    routeData: {
-      path: '/terminal',
-      name: 'Terminal',
-      component: () => import('@/views/Terminal/TerminalIndex.vue')
     }
   },
   {
@@ -129,6 +121,16 @@ export const defaultRoutes: NavItem[] = [
       path: '/instance-proxy',
       name: 'InstanceProxySettings',
       component: () => import('@/views/Settings/InstanceProxySettingsIndex.vue')
+    }
+  },
+  {
+    googleIcon: 'info',
+    name: '关于',
+    placement: 'footer',
+    routeData: {
+      path: '/about',
+      name: 'About',
+      component: () => import('@/views/About/AboutIndex.vue')
     }
   }
 ]

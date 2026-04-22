@@ -206,6 +206,7 @@ export type ProcessLog = {
 
 export type ProjectTomlDetail = {
   project_name: string
+  resolved_project_dir: string
   adapters: Array<{
     [key: string]: string
   }>
