@@ -139,34 +139,18 @@ nb self install nb-cli-plugin-webui
 docker pull docker.io/xisoul/nonebot-webui:latest
 ```
 
-当前默认推荐直接使用 Docker Hub 镜像，下载链路相对更稳定：
+镜像默认使用 Docker Hub：
 
-- `docker.io/xisoul/nonebot-webui`
+- `docker.io/xisoul/nonebot-webui:latest`
+- `docker.io/xisoul/nonebot-webui:master`
+- `docker.io/xisoul/nonebot-webui:${version}`
+- `docker.io/xisoul/nonebot-webui:${major}.${minor}`
 
-Docker 镜像可以选择以下版本:
-
-- `latest`: 默认分支最新可用镜像
-- `master`: 默认分支镜像，适合持续跟进测试
-- `${version}` / `${major}.${minor}`: 当推送 `v*` tag 时自动生成的正式版本镜像，例如 `0.4.2`、`0.4`
-
-当前不再推荐使用 GitHub commit 短 SHA 作为公开版本标签。镜像版本统一以显式版本号为主，便于后续做镜像更新检测、版本对比和回滚。
-
-例如:
-
-```shell
-docker pull docker.io/xisoul/nonebot-webui:latest
-docker pull docker.io/xisoul/nonebot-webui:master
-docker pull docker.io/xisoul/nonebot-webui:0.4.2
-docker pull docker.io/xisoul/nonebot-webui:0.4
-```
+推荐优先使用显式版本号，例如 `0.4.2`、`0.4`，方便后续做升级、回滚和版本检测。
 
 ### 生产部署
 
-生产部署文档和默认示例统一使用 Docker Hub 镜像：
-
-- `docker.io/xisoul/nonebot-webui`
-
-测试服部署默认使用以下运行参数：
+推荐直接用 Docker Hub 镜像部署：
 
 ```shell
 docker run -d \
@@ -182,15 +166,55 @@ docker run -d \
   docker.io/xisoul/nonebot-webui:latest
 ```
 
-部署前请确保以下路径存在且可写：
+也可以直接使用仓库里的 `docker-compose.yml`。
+
+部署前请确保下面这些宿主机路径存在且可写：
 
 - `/home/xisoul/nonebot-webui-data/projects`
 - `/home/xisoul/nonebot-webui-external-projects`
 - `/home/xisoul/nonebot-webui-data/config.json`
 - `/home/xisoul/nonebot-webui-data/project.json`
 
-注意：`/app/config.json` 与 `/app/project.json` 会在运行时被程序写回，不能只读挂载。
-Docker 运行模式下项目默认根目录为 `/projects`。
+注意：
+
+- `/app/config.json` 与 `/app/project.json` 会在运行时被程序写回，不能只读挂载
+- Docker 模式下，WebUI 新建实例默认放在 `/projects`
+- 接入宿主机或 NAS 上已经存在的 NoneBot 项目，建议统一挂到 `/external-projects`
+
+### 路径映射说明
+
+Docker / NAS 场景下请区分“宿主机路径”和“容器内路径”：
+
+- 宿主机路径：例如群晖 NAS 上的 `/vol1/1000/nonebot`
+- 容器内路径：例如 `/projects`、`/external-projects`
+
+不要把容器内路径也写成宿主机路径，例如：
+
+- 错误：`/vol1/1000/nonebot -> /vol1/1000/nonebot`
+
+推荐这样映射：
+
+- WebUI 自己新建的实例目录：`宿主机目录 -> /projects`
+- NAS 上已经存在的 NoneBot 项目目录：`宿主机目录 -> /external-projects`
+
+例如你的 NAS 目录是：
+
+- `/vol1/1000/nonebot`
+
+如果这里面放的是已经存在的机器人实例，推荐挂载成：
+
+- `/vol1/1000/nonebot -> /external-projects`
+
+如果你还想让 WebUI 新建实例，再额外准备一块目录挂到：
+
+- `宿主机某个目录 -> /projects`
+
+这样最清晰：
+
+- `/projects`：WebUI 创建的新实例
+- `/external-projects`：外部已有实例
+
+### 添加已有实例时怎么填路径
 
 添加已有实例时，实例路径支持以下几种写法：
 
@@ -199,55 +223,57 @@ Docker 运行模式下项目默认根目录为 `/projects`。
 - `/external-projects/3998382152`
 
 WebUI 会自动把它解析并保存为容器内的真实绝对路径。
-如果当前是 Docker 部署，不要填写 NAS 或宿主机自己的物理路径，例如 `/vol1/...`、`/volume1/...`、`/home/...` 这类容器外路径。
+如果当前是 Docker / NAS 部署，不要填写宿主机自己的物理路径，例如：
 
-如需本地打包后手工部署，可使用：
+- `/vol1/...`
+- `/volume1/...`
+- `/home/...`
 
-```shell
-./build-and-export.sh
-./deploy.sh
-```
-
-默认情况下，这两个脚本都会自动读取 `pyproject.toml` 中的版本号作为 Docker tag。
-如果你想手动指定镜像版本，也可以直接传参：
-
-```shell
-./build-and-export.sh 0.4.2
-./deploy.sh 0.4.2
-```
-
-容器内显示的 WebUI 版本也会优先使用这个显式版本号，而不是 GitHub 随机 commit 字符串。
+这些路径对容器里的 WebUI 来说是不可见的，必须填写容器内路径。
 
 本镜像当前不内置 Playwright Linux 系统依赖；若你管理的外部项目自身依赖 Playwright，请在对应项目运行环境中单独安装。
 
 ### 登录说明
 
-WebUI 登录使用“登录凭证”换取 JWT 会话：
+首次启动容器后，请先去查看容器日志里的登录凭证（token），再用它登录 WebUI。
 
-1. 在登录页输入当前登录凭证
-2. 前端调用 `/v1/auth/login`
-3. 后端校验凭证后返回 JWT
-4. 前端将 JWT 保存到当前浏览器会话并用于后续 API / WebSocket 调用
-
-因此，登录凭证本身不能直接作为 `Authorization: Bearer <token>` 使用。
-
-
-可用下面这组命令快速验证镜像是否能正常启动：
+例如：
 
 ```shell
-docker run -d --rm \
-  --name nonebot-webui-test \
-  -p 18080:18080 \
-  docker.io/xisoul/nonebot-webui:latest
-
-docker logs nonebot-webui-test
-docker rm -f nonebot-webui-test
+docker logs nonebot-webui
 ```
 
-可选附加 env 参数:
+如果你在群晖 Docker 管理界面中部署，也同样需要到“容器日志”里查看首次生成的 token。
+
+登录流程是：
+
+1. 用日志里的登录凭证登录
+2. WebUI 会换取当前浏览器会话用的 JWT
+3. 后续页面请求和 WebSocket 连接都会使用 JWT
+
+因此，登录凭证本身不是直接拿来当 `Authorization: Bearer ...` 用的。
+
+如果后面你在“安全设置”里改成随机 token 模式，新 token 也会继续写到容器日志里。
+
+### 常用环境变量
 
 - HOST: 指定监听地址，默认为 `0.0.0.0`
 - PORT: 指定监听端口，默认为 `18080`
+
+### 代理与镜像源
+
+容器运行时代理、Debian 镜像源、pip 源都可以在 WebUI 里直接配置，不需要部署阶段先写一大堆复杂参数。
+
+如果你的环境确实需要，也支持通过环境变量传入：
+
+- `WEBUI_HTTP_PROXY`
+- `WEBUI_HTTPS_PROXY`
+- `WEBUI_ALL_PROXY`
+- `WEBUI_NO_PROXY`
+- `WEBUI_DEBIAN_MIRROR`
+- `WEBUI_PIP_INDEX_URL`
+- `WEBUI_PIP_EXTRA_INDEX_URL`
+- `WEBUI_PIP_TRUSTED_HOST`
 
 ## 开发
 
@@ -256,62 +282,3 @@ docker rm -f nonebot-webui-test
 ## 补充
 
 nb-cli WebUI 目前正处于快速迭代中，欢迎各位提交在使用过程中发现的 BUG 和建议。
-
-### Docker advanced runtime settings
-
-The container supports runtime proxy and mirror settings via environment variables:
-
-- `WEBUI_HTTP_PROXY`, `WEBUI_HTTPS_PROXY`, `WEBUI_ALL_PROXY`, `WEBUI_NO_PROXY`
-- `WEBUI_SOURCE_PRESET` (`official` / `tuna` / `ustc` / `aliyun` / `huawei`)
-- `WEBUI_AUTO_BEST_PRESET=1` (startup benchmark and apply best preset automatically)
-- `WEBUI_AUTO_BEST_PRESET_FORCE=1` (force benchmark even if saved source values already exist)
-- `WEBUI_DEBIAN_MIRROR` / `WEBUI_APT_MIRROR` (or `DEBIAN_MIRROR`, `APT_MIRROR`, `LINUX_MIRROR`)
-- `WEBUI_PIP_INDEX_URL`, `WEBUI_PIP_EXTRA_INDEX_URL`, `WEBUI_PIP_TRUSTED_HOST`
-
-You can also edit these values in WebUI `Settings -> 容器代理与镜像源`.
-Priority: explicit environment variables passed to `docker run` > `WEBUI_SOURCE_PRESET` > values saved in WebUI.
-Auto-best preset is disabled by default.
-When enabled, container startup may take longer because mirror connectivity benchmark is executed first.
-
-WebUI also provides:
-- one-click source presets (Official / TUNA / USTC / Aliyun / Huawei)
-- runtime profile templates (save/apply/delete for scenarios like home/company)
-- preset benchmark (auto speed ranking)
-- apply best preset directly from benchmark result
-- connectivity test for Debian mirror and pip index (quick/deep)
-- auto quick pre-check before saving (can force save on failure)
-- one-click rollback to official source
-
-For Linux hosts, if your proxy runs on host machine, add:
-
-```shell
---add-host host.docker.internal:host-gateway
-```
-
-Example:
-
-```shell
-docker run -it --rm \
-  -p 18080:18080 \
-  -v ./:/app \
-  -e WEBUI_HTTP_PROXY=http://host.docker.internal:7890 \
-  -e WEBUI_HTTPS_PROXY=http://host.docker.internal:7890 \
-  -e WEBUI_SOURCE_PRESET=tuna \
-  docker.io/xisoul/nonebot-webui:latest
-```
-
-镜像默认使用 Docker Hub:
-
-```shell
-docker.io/xisoul/nonebot-webui:latest
-```
-
-Auto-select best preset on startup:
-
-```shell
-docker run -it --rm \
-  -p 18080:18080 \
-  -v ./:/app \
-  -e WEBUI_AUTO_BEST_PRESET=1 \
-  docker.io/xisoul/nonebot-webui:latest
-```
