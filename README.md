@@ -214,3 +214,59 @@ docker logs nonebot-webui
 - 首次登录凭证请去容器日志里看
 - 想回头找 token，直接看容器日志，不是在页面里反查
 - 如果某些插件依赖 Playwright 或系统库，请在对应机器人项目自己的运行环境里安装，不是装在 WebUI 容器里
+
+## 发布流程
+
+这个仓库当前的 Docker 镜像发布依赖 GitHub Actions 自动完成。
+
+需要注意：
+
+- 只在本地 `docker build` 不会自动更新 Docker Hub
+- 自动推送镜像依赖 GitHub 上的提交和 tag
+- 版本号必须和 tag 对应，否则 release workflow 会失败
+
+### 自动发布触发规则
+
+- 推送到 `master` 会触发 Docker 构建流程
+- 推送 `v*` 格式的 tag 也会触发 Docker 构建流程
+
+当前 Docker workflow 会自动生成这些常用标签：
+
+- `latest`
+- `master`
+- `${major}.${minor}`
+- `${version}`
+
+例如版本 `0.4.4` 会自动生成：
+
+- `xisoul/nonebot-webui:latest`
+- `xisoul/nonebot-webui:master`
+- `xisoul/nonebot-webui:0.4`
+- `xisoul/nonebot-webui:0.4.4`
+
+### 推荐发版步骤
+
+1. 修改代码并在本地测试通过
+2. 更新 `pyproject.toml` 中的版本号
+3. 同步更新 `Dockerfile` 中的 `APP_VERSION`
+4. 提交代码
+5. 打版本 tag，例如 `v0.4.4`
+6. 推送 `master` 和对应 tag
+
+示例：
+
+```bash
+git add .
+git commit -m "feat: your change"
+git push origin master
+
+git tag v0.4.4
+git push origin v0.4.4
+```
+
+### 重要说明
+
+- tag 必须和 `pyproject.toml` 中的版本一致
+- 如果 tag 已经打错位置，需要先修正 tag 指向再重新 push
+- 当前 release workflow 已移除 PyPI 发布，只保留 GitHub Release 产物上传，避免因为 PyPI Trusted Publisher 配置导致整条流程报红
+- 如果 Docker Hub 没更新，优先去 GitHub Actions 看 `docker.yml` 是否成功

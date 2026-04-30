@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from importlib.metadata import version
 
 from starlette.types import Send, Scope, Receive
 from fastapi import FastAPI, HTTPException, status
@@ -70,7 +69,7 @@ api = FastAPI(
     debug=bool(Config.debug),
     title="NoneBot CLI WebUI",
     description="WebUI for NoneBot CLI",
-    version=version("nb_cli_plugin_webui"),
+    version=get_version(),
     openapi_url="/docs/openapi.json",
     root_path="/api",
     docs_url=None,
