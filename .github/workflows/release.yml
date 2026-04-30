@@ -76,9 +76,6 @@ jobs:
           poetry run compile
           poetry build
 
-      - name: 📦️ Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-
       - name: 📦️ Publish package to GitHub
         run: |
           gh release upload --clobber ${{ needs.check-version.outputs.TAG_NAME }} dist/*.tar.gz dist/*.whl
