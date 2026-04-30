@@ -29,7 +29,10 @@ type EnvCardState = {
   preset: EnvPreset
   savingPreset: boolean
   savingRaw: boolean
+  savingMessage: string
 }
+
+type SaveStage = 'idle' | 'saving' | 'syncing' | 'reloading'
 
 const TOKEN_KEY_CANDIDATES = ['ONEBOT_ACCESS_TOKEN', 'ACCESS_TOKEN', 'TOKEN']
 
@@ -39,6 +42,7 @@ const toast = useToastStore()
 const loading = ref(false)
 const pyprojectText = ref('')
 const pyprojectSaving = ref(false)
+const pyprojectSaveStage = ref<SaveStage>('idle')
 
 const createEmptyPreset = (): EnvPreset => ({
   host: '',
@@ -59,8 +63,24 @@ const createEnvCard = (name: string, title: string, description: string): EnvCar
   rawText: '',
   preset: createEmptyPreset(),
   savingPreset: false,
-  savingRaw: false
+  savingRaw: false,
+  savingMessage: ''
 })
+
+const getSaveButtonText = (
+  isSaving: boolean,
+  stage: SaveStage,
+  idleLabel: string
+) => {
+  if (!isSaving) return idleLabel
+  if (stage === 'saving') return '保存中...'
+  if (stage === 'syncing') return '同步实例中...'
+  if (stage === 'reloading') return '重新加载中...'
+  return '处理中...'
+}
+
+const getPostSaveHint = (wasRunning: boolean) =>
+  wasRunning ? '保存完成后会自动同步配置并重启实例。' : '保存完成后会自动同步配置。'
 
 const envCards = ref<EnvCardState[]>([
   createEnvCard('.env', '基础环境 .env', '适合放实例通用配置，当前激活环境也由这里控制。'),
@@ -243,20 +263,34 @@ const savePyproject = async () => {
   const wasRunning = Boolean(nonebotStore.selectedBot.is_running)
 
   pyprojectSaving.value = true
-  const { error } = await saveProjectPyprojectFile(
-    nonebotStore.selectedBot.project_id,
-    pyprojectText.value
-  )
-  pyprojectSaving.value = false
+  pyprojectSaveStage.value = 'saving'
+  toast.add('info', 'pyproject.toml 已提交，正在保存并同步实例配置...', '', 2500)
 
-  if (error) {
-    toast.add('error', `保存 pyproject.toml 失败：${error}`, '', 5000)
-    return
+  try {
+    const { error } = await saveProjectPyprojectFile(
+      nonebotStore.selectedBot.project_id,
+      pyprojectText.value
+    )
+
+    if (error) {
+      toast.add('error', `保存 pyproject.toml 失败：${error}`, '', 5000)
+      return
+    }
+
+    pyprojectSaveStage.value = 'syncing'
+    await nonebotStore.loadBots()
+    pyprojectSaveStage.value = 'reloading'
+    await loadWorkbench()
+    toast.add(
+      'success',
+      wasRunning ? 'pyproject.toml 已保存，实例已自动重启' : 'pyproject.toml 已保存',
+      '',
+      4000
+    )
+  } finally {
+    pyprojectSaving.value = false
+    pyprojectSaveStage.value = 'idle'
   }
-
-  await nonebotStore.loadBots()
-  await loadWorkbench()
-  toast.add('success', wasRunning ? 'pyproject.toml 已保存，实例已自动重启' : 'pyproject.toml 已保存', '', 4000)
 }
 
 const persistEnvCard = async (card: EnvCardState, rawText: string, sourceLabel: string) => {
@@ -265,10 +299,12 @@ const persistEnvCard = async (card: EnvCardState, rawText: string, sourceLabel: 
   const projectId = nonebotStore.selectedBot.project_id
   const wasRunning = Boolean(nonebotStore.selectedBot.is_running)
   const nextRawText = normalizeRawText(rawText)
+  card.savingMessage = '正在保存配置...'
 
   if (!card.exists) {
     const { error, status } = await createProjectEnvFile(projectId, card.name)
     if (error && status !== 400) {
+      card.savingMessage = ''
       toast.add('error', `创建 ${card.name} 失败：${error}`, '', 5000)
       return
     }
@@ -277,31 +313,44 @@ const persistEnvCard = async (card: EnvCardState, rawText: string, sourceLabel: 
 
   const { error } = await saveProjectDotenvFile(projectId, card.name, nextRawText)
   if (error) {
+    card.savingMessage = ''
     toast.add('error', `保存 ${card.name} 失败：${error}`, '', 5000)
     return
   }
 
+  card.savingMessage = '正在同步实例状态...'
   card.rawText = nextRawText
   card.preset = buildPresetFromRaw(card.rawText)
   await nonebotStore.loadBots()
+  card.savingMessage = '正在重新加载编辑器内容...'
+  await loadEnvCard(projectId, card)
   toast.add(
     'success',
     wasRunning ? `${card.name}${sourceLabel}已保存，实例已自动重启` : `${card.name}${sourceLabel}已保存`,
     '',
     4000
   )
+  card.savingMessage = ''
 }
 
 const savePreset = async (card: EnvCardState) => {
   card.savingPreset = true
-  await persistEnvCard(card, mergePresetIntoRaw(card.rawText, card.preset), '预设项')
-  card.savingPreset = false
+  try {
+    await persistEnvCard(card, mergePresetIntoRaw(card.rawText, card.preset), '预设项')
+  } finally {
+    card.savingPreset = false
+    card.savingMessage = ''
+  }
 }
 
 const saveRawText = async (card: EnvCardState) => {
   card.savingRaw = true
-  await persistEnvCard(card, card.rawText, '原始内容')
-  card.savingRaw = false
+  try {
+    await persistEnvCard(card, card.rawText, '原始内容')
+  } finally {
+    card.savingRaw = false
+    card.savingMessage = ''
+  }
 }
 
 watch(
@@ -363,8 +412,12 @@ watch(
             :disabled="pyprojectSaving"
             @click="savePyproject"
           >
-            {{ pyprojectSaving ? '保存中...' : '保存 pyproject.toml' }}
+            {{ getSaveButtonText(pyprojectSaving, pyprojectSaveStage, '保存 pyproject.toml') }}
           </button>
+        </div>
+
+        <div v-if="pyprojectSaving" class="text-right text-xs opacity-70">
+          {{ getPostSaveHint(Boolean(nonebotStore.selectedBot?.is_running)) }}
         </div>
       </section>
 
@@ -449,7 +502,11 @@ watch(
             :disabled="card.savingPreset"
             @click="savePreset(card)"
           >
-            {{ card.savingPreset ? '保存中...' : '保存上方预设项' }}
+            {{
+              card.savingPreset
+                ? card.savingMessage || '保存中...'
+                : '保存上方预设项'
+            }}
           </button>
         </div>
 
@@ -465,7 +522,7 @@ watch(
             :disabled="card.savingRaw"
             @click="saveRawText(card)"
           >
-            {{ card.savingRaw ? '保存中...' : `保存 ${card.name}` }}
+            {{ card.savingRaw ? card.savingMessage || '保存中...' : `保存 ${card.name}` }}
           </button>
         </div>
       </section>

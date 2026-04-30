@@ -164,6 +164,33 @@ def _apply_proxy_mapping_to_env(env: Dict[str, str], mapping: Dict[str, str]) ->
     return env
 
 
+def _get_container_proxy_mapping() -> Dict[str, str]:
+    proxy_url = _normalize_text(getattr(Config, "container_proxy_url", ""))
+    http_proxy = _normalize_text(getattr(Config, "container_http_proxy", ""))
+    https_proxy = _normalize_text(getattr(Config, "container_https_proxy", ""))
+    all_proxy = _normalize_text(getattr(Config, "container_all_proxy", ""))
+    no_proxy = _normalize_text(getattr(Config, "container_no_proxy", ""))
+
+    if proxy_url:
+        parsed = urlparse(proxy_url)
+        if parsed.scheme.startswith("socks"):
+            all_proxy = all_proxy or proxy_url
+        else:
+            http_proxy = http_proxy or proxy_url
+            https_proxy = https_proxy or proxy_url
+
+    return {
+        "HTTP_PROXY": http_proxy,
+        "HTTPS_PROXY": https_proxy,
+        "ALL_PROXY": all_proxy,
+        "NO_PROXY": no_proxy,
+    }
+
+
+def _has_any_proxy(mapping: Dict[str, str]) -> bool:
+    return any(_normalize_text(value) for value in mapping.values())
+
+
 def get_bot_proxy_env(
     base_env: Optional[Dict[str, str]] = None, project_meta: Optional[Any] = None
 ) -> Dict[str, str]:
@@ -175,16 +202,22 @@ def get_bot_proxy_env(
             return _apply_proxy_mapping_to_env(env, project_settings.resolve_proxy_urls())
 
     settings = BotProxySettings.from_config()
-    if not settings.has_custom_settings():
-        return env
-
     target_instances = _parse_target_instances(getattr(Config, "bot_proxy_instances", ""))
     if project_meta is not None and target_instances:
         project_name = _normalize_text(getattr(project_meta, "project_name", ""))
         if project_name not in target_instances:
             return env
 
-    return _apply_proxy_mapping_to_env(env, settings.resolve_proxy_urls())
+    if settings.has_custom_settings():
+        return _apply_proxy_mapping_to_env(env, settings.resolve_proxy_urls())
+
+    # Backward compatibility: if only container runtime proxy is configured,
+    # reuse it for bot/plugin runtime when the project inherits the global proxy.
+    container_mapping = _get_container_proxy_mapping()
+    if _has_any_proxy(container_mapping):
+        return _apply_proxy_mapping_to_env(env, container_mapping)
+
+    return env
 
 
 def _is_socks_proxy_url(value: str) -> bool:

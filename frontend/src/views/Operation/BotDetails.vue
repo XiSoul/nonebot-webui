@@ -169,11 +169,14 @@ watch(
 
 <template>
   <dialog ref="detailShowModal" class="modal">
-    <div class="modal-box rounded-lg flex flex-col gap-4">
-      <h3 class="font-semibold text-lg">{{ detailShowModalTitle }}详细</h3>
+    <div class="modal-box rounded-[24px] border border-base-content/10 bg-base-100 shadow-2xl flex flex-col gap-5">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="font-semibold text-lg">{{ detailShowModalTitle }}详细</h3>
+        <div class="badge badge-ghost">{{ detailShowModalContent.length }} 项</div>
+      </div>
 
       <div class="flex flex-wrap gap-2">
-        <div v-for="d in detailShowModalContent" :key="d" class="badge badge-ghost">
+        <div v-for="d in detailShowModalContent" :key="d" class="badge badge-ghost px-3 py-3">
           {{ d }}
         </div>
         <div v-if="!detailShowModalContent.length">暂无数据</div>
@@ -196,39 +199,61 @@ watch(
     </div>
   </dialog>
 
-  <div class="grid gap-4 grid-cols-1 xl:grid-cols-2">
-    <div class="w-full p-6 bg-base-200 rounded-box">
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <tbody>
-            <tr v-for="item in visibleBasicItems" :key="item.title">
-              <td class="pl-0 text-base font-semibold">{{ item.title }}</td>
-              <td>{{ item.details?.value[0] }}</td>
-            </tr>
-          </tbody>
-        </table>
+  <section class="grid gap-6">
+    <div class="rounded-[28px] border border-base-content/10 bg-base-200 p-6 shadow-sm">
+      <div class="flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-[0.24em] text-base-content/45">运行概览</div>
+        <h2 class="text-lg font-semibold">当前实例信息</h2>
+      </div>
+
+      <div class="mt-5 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <article
+          v-for="item in visibleBasicItems"
+          :key="item.title"
+          class="rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-4 backdrop-blur"
+        >
+          <div class="text-xs uppercase tracking-[0.18em] text-base-content/45">
+            {{ item.title }}
+          </div>
+          <div class="mt-3 break-all text-sm leading-6 text-base-content/85">
+            {{ item.details?.value[0] }}
+          </div>
+        </article>
       </div>
     </div>
 
-    <div class="w-full p-6 bg-base-200 rounded-box">
-      <table class="table">
-        <tbody>
-          <tr v-for="item in installedItems" :key="item.title">
-            <td class="pl-0 text-base font-semibold">{{ item.title }}</td>
-            <td>
-              <div class="badge">{{ item.details?.value.length }} 个</div>
-            </td>
-            <td class="flex justify-end pr-0">
-              <button class="btn btn-sm btn-ghost" @click="openModal(item.key!)">详细</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="rounded-[28px] border border-base-content/10 bg-base-200 p-6 shadow-sm">
+      <div class="flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-[0.24em] text-base-content/45">插件视图</div>
+        <h2 class="text-lg font-semibold">插件与候选目录</h2>
+      </div>
 
-      <div class="mt-4 text-xs leading-6 opacity-70">
+      <div class="mt-5 flex flex-col gap-3">
+        <article
+          v-for="item in installedItems"
+          :key="item.title"
+          class="flex flex-col gap-3 rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-4 backdrop-blur md:flex-row md:items-center md:justify-between"
+        >
+          <div class="flex min-w-0 flex-1 flex-col gap-2">
+            <div class="text-base font-semibold">{{ item.title }}</div>
+            <div class="text-sm text-base-content/65">
+              {{ item.details?.value.length ? `当前已识别 ${item.details?.value.length} 项，可进入详细面板查看完整列表。` : '当前未识别到相关内容。' }}
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="badge badge-lg badge-ghost min-w-16 justify-center">
+              {{ item.details?.value.length }} 个
+            </div>
+            <button class="btn btn-sm btn-ghost" @click="openModal(item.key!)">详细</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="mt-5 rounded-2xl border border-dashed border-base-content/10 bg-base-100/40 px-4 py-3 text-xs leading-6 opacity-70">
         这里只保留插件相关信息。
         <span class="font-mono">plugin_dirs</span> 是项目声明的本地插件目录，候选目录来自扫描结果，不会自动改写配置。
       </div>
     </div>
-  </div>
+  </section>
 </template>

@@ -6,7 +6,10 @@ from fastapi import Depends, APIRouter
 
 from nb_cli_plugin_webui.app.logging import logger as log
 from nb_cli_plugin_webui.app.handlers import NoneBotProjectManager
-from nb_cli_plugin_webui.app.handlers.process import ProcessManager, LogStorageFather
+from nb_cli_plugin_webui.app.handlers.process import (
+    ProcessManager,
+    LogStorageFather,
+)
 from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProjectMeta
 
 from .exceptions import ProjectDeleteFailed
@@ -138,8 +141,11 @@ async def get_plugins(
     """
     - 获取实例的插件列表
     """
-    await project.update_plugin_config()
     project_metadata = project.read()
+    process = ProcessManager.get_process(project_metadata.project_id)
+    if process and process.refresh_runtime_state():
+        await project.update_plugin_config()
+        project_metadata = project.read()
     return GenericResponse(detail=project_metadata.plugins)
 
 

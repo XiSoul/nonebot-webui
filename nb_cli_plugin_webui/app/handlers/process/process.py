@@ -47,6 +47,7 @@ class Processor:
         log_destroy_seconds: int,
         project_id: str = "",
         project_name: str = "",
+        terminate_duplicate_processes: bool = True,
     ) -> None:
         self.args = args
         self.cwd = cwd
@@ -54,6 +55,7 @@ class Processor:
         self.log_storage = LogStorage(log_destroy_seconds)
         self.project_id = project_id
         self.project_name = project_name
+        self.terminate_duplicate_processes = terminate_duplicate_processes
 
         self.process_event = asyncio.Event()
         self.output_task = None
@@ -229,8 +231,9 @@ class Processor:
         if self.refresh_runtime_state():
             return
 
-        async for pid in self._find_duplicate_process():
-            log.warning(f"Possible process {pid=} found, terminated.")
+        if self.terminate_duplicate_processes:
+            async for pid in self._find_duplicate_process():
+                log.warning(f"Possible process {pid=} found, terminated.")
 
         self._repair_project_executable()
         await self._process_executer()

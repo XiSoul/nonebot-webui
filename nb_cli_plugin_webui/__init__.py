@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from subprocess import check_output
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 _DOCKER_VERSION_FILE = Path("/usr/local/share/nb-cli-plugin-webui/version")
 
@@ -48,6 +48,9 @@ def get_version():
         return f"{__version__}+g{__build__[:7]}"
     return __version__
 
-
-__version__ = version("nb_cli_plugin_webui")
+try:
+    __version__ = version("nb_cli_plugin_webui")
+except PackageNotFoundError:
+    # Fallback for source checkout/dev mode before the package is installed.
+    __version__ = "0.0.0"
 __build__ = get_revision()

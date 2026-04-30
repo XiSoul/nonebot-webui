@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 import re
@@ -424,25 +425,48 @@ class NoneBotProjectManager:
             CliSimpleInfo(name=adapter.name, module_name=adapter.module_name)
         )
         data = self.read()
-        for adapter in data.adapters:
-            if adapter.module_name == adapter.module_name:
-                data.adapters.remove(adapter)
+        for current_adapter in data.adapters:
+            if current_adapter.module_name == adapter.module_name:
+                data.adapters.remove(current_adapter)
                 break
         self.store(data)
 
     async def update_plugin_config(self) -> None:
+        from nb_cli_plugin_webui.app.project.utils import get_nonebot_info_from_toml
+
         data = self.read()
         config_file = self.config_manager.config_file
         existing_plugins = {plugin.module_name: plugin for plugin in data.plugins}
         plugin_store_lookup = self._build_plugin_store_lookup()
+        declared_plugins: List[str] = []
 
         try:
-            plugins = await get_nonebot_loaded_plugins(
-                config_file, self.config_manager.python_path
-            )
+            project_detail = get_nonebot_info_from_toml(config_file.parent)
+            declared_plugins = list(project_detail.plugins)
         except Exception:
-            return
-        plugin_names = list(dict.fromkeys([*plugins, *existing_plugins.keys()]))
+            declared_plugins = [plugin.module_name for plugin in data.plugins if plugin.module_name]
+
+        plugins: List[str] = []
+        if data.is_running:
+            try:
+                plugins = await asyncio.wait_for(
+                    get_nonebot_loaded_plugins(
+                        config_file, self.config_manager.python_path
+                    ),
+                    timeout=10,
+                )
+            except Exception:
+                plugins = []
+
+        plugin_names = list(
+            dict.fromkeys(
+                [
+                    *declared_plugins,
+                    *plugins,
+                    *existing_plugins.keys(),
+                ]
+            )
+        )
         cwd = config_file.parent
 
         data.plugins = list()

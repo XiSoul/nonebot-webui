@@ -25,7 +25,9 @@ const fetchProcessLogs = async (projectId: string) => {
   if (!token) return [] as ProcessLog[]
 
   const response = await fetch(
-    generateURLForWebUI(`/v1/process/log/history?log_id=${encodeURIComponent(projectId)}`),
+    generateURLForWebUI(
+      `/v1/process/log/history?log_count=200&log_id=${encodeURIComponent(projectId)}`
+    ),
     {
       method: 'GET',
       headers: {

@@ -3,6 +3,7 @@ import sys
 import socket
 import asyncio
 import shlex
+import json
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -41,6 +42,14 @@ HTMLRENDER_PROJECT_FILES = (
     "Pipfile",
     "Pipfile.lock",
 )
+HTMLRENDER_PLAYWRIGHT_TIMEOUT_SECONDS = 20 * 60
+PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST = (
+    "https://cdn.playwright.dev/chrome-for-testing-public"
+)
+PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT = "300000"
+HTMLRENDER_INSTALL_TASKS: Dict[str, asyncio.Task] = dict()
+PROCESS_START_STABILITY_SECONDS = 2.0
+PROJECT_READY_TIMEOUT_SECONDS = 90.0
 
 
 class ProjectShellSessionManager:
@@ -202,6 +211,39 @@ def _apply_htmlrender_browser_path(env: dict, project_meta, project_dir: Path) -
     )
 
 
+def _apply_htmlrender_download_env(env: dict, project_meta, project_dir: Path) -> None:
+    if not _project_mentions_htmlrender(project_meta, project_dir):
+        return
+
+    env_data = _load_project_env_data(project_meta, project_dir)
+
+    explicit_chromium_host = str(
+        env_data.get("PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST")
+        or env_data.get("playwright_chromium_download_host")
+        or ""
+    ).strip()
+    if explicit_chromium_host:
+        env["PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST"] = explicit_chromium_host
+    else:
+        env.setdefault(
+            "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST",
+            PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST,
+        )
+
+    explicit_timeout = str(
+        env_data.get("PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT")
+        or env_data.get("playwright_download_connection_timeout")
+        or ""
+    ).strip()
+    if explicit_timeout:
+        env["PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT"] = explicit_timeout
+    else:
+        env.setdefault(
+            "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT",
+            PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT,
+        )
+
+
 def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[dict, bool]:
     project_dir = Path(project_meta.project_dir)
     if pip_safe:
@@ -225,6 +267,7 @@ def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[
         env["VIRTUAL_ENV"] = str(virtual_env.absolute())
 
     _apply_htmlrender_browser_path(env, project_meta, project_dir)
+    _apply_htmlrender_download_env(env, project_meta, project_dir)
 
     return env, socks_proxy_disabled
 
@@ -262,6 +305,8 @@ def _build_shell_bootstrap_script(
         f"__nb_webui_saved_https_proxy={saved_https_proxy}\n"
         f"__nb_webui_saved_all_proxy={saved_all_proxy}\n"
         f"__nb_webui_saved_no_proxy={saved_no_proxy}\n"
+        f"export PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST={shlex.quote(PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST)}\n"
+        f"export PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT={shlex.quote(PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT)}\n"
         "pip() {\n"
         '  case "${HTTP_PROXY:-${http_proxy:-}} ${HTTPS_PROXY:-${https_proxy:-}} ${ALL_PROXY:-${all_proxy:-}}" in\n'
         "    *socks4://*|*socks4a://*|*socks5://*|*socks5h://*)\n"
@@ -280,6 +325,311 @@ def _build_shell_bootstrap_script(
         '  "$__nb_webui_python" -m playwright "$@"\n'
         "}\n"
     )
+
+
+async def _run_subprocess(
+    *args: str,
+    cwd: Path,
+    env: dict,
+    timeout: Optional[int] = None,
+    log_storage: Optional[LogStorage] = None,
+    stdout_level: str = "INFO",
+    stderr_level: str = "WARNING",
+) -> Tuple[int, str, str]:
+    process = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=str(cwd),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    async def _collect(
+        stream: Optional[asyncio.StreamReader], level: str
+    ) -> str:
+        if stream is None:
+            return ""
+
+        lines: List[str] = []
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", errors="ignore").rstrip()
+            if not text:
+                continue
+            lines.append(text)
+            if log_storage is not None:
+                await log_storage.add_log(CustomLog(level=level, message=text))
+        return "\n".join(lines)
+
+    stdout_task = asyncio.create_task(_collect(process.stdout, stdout_level))
+    stderr_task = asyncio.create_task(_collect(process.stderr, stderr_level))
+
+    try:
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        stdout_text, stderr_text = await asyncio.gather(stdout_task, stderr_task)
+        raise TimeoutError(
+            f"Command timed out after {timeout}s: {' '.join(args)}"
+        ) from None
+
+    stdout_text, stderr_text = await asyncio.gather(stdout_task, stderr_task)
+    return process.returncode, stdout_text, stderr_text
+
+
+async def _detect_playwright_chromium_executable(
+    project_dir: Path, env: dict
+) -> Tuple[bool, str]:
+    python_path = _get_project_python_path(project_dir)
+    script = (
+        "import json\n"
+        "from pathlib import Path\n"
+        "from playwright.sync_api import sync_playwright\n"
+        "with sync_playwright() as p:\n"
+        "    path = Path(p.chromium.executable_path)\n"
+        "    print(json.dumps({'path': str(path), 'exists': path.exists()}))\n"
+    )
+    returncode, stdout_text, stderr_text = await _run_subprocess(
+        python_path,
+        "-c",
+        script,
+        cwd=project_dir,
+        env=env,
+    )
+    if returncode != 0:
+        combined = stderr_text or stdout_text
+        raise RuntimeError(
+            combined or "Failed to inspect Playwright chromium executable path."
+        )
+
+    lines = [line.strip() for line in stdout_text.splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("Playwright executable probe returned empty output.")
+
+    payload = json.loads(lines[-1])
+    return bool(payload.get("exists")), str(payload.get("path") or "")
+
+
+async def _can_launch_playwright_chromium(project_dir: Path, env: dict) -> Tuple[bool, str]:
+    python_path = _get_project_python_path(project_dir)
+    script = (
+        "import asyncio\n"
+        "from playwright.async_api import async_playwright\n"
+        "async def main():\n"
+        "    async with async_playwright() as p:\n"
+        "        browser = await p.chromium.launch()\n"
+        "        await browser.close()\n"
+        "asyncio.run(main())\n"
+    )
+    returncode, stdout_text, stderr_text = await _run_subprocess(
+        python_path,
+        "-c",
+        script,
+        cwd=project_dir,
+        env=env,
+    )
+    detail = stderr_text or stdout_text or ""
+    return returncode == 0, detail
+
+
+async def _ensure_htmlrender_browser_ready(
+    project_meta,
+    env: dict,
+    log_storage: Optional[LogStorage] = None,
+    *,
+    block: bool = True,
+) -> None:
+    project_dir = Path(project_meta.project_dir)
+    if not _project_mentions_htmlrender(project_meta, project_dir):
+        return
+
+    try:
+        browser_exists, executable_path = await _detect_playwright_chromium_executable(
+            project_dir, env
+        )
+    except Exception as err:
+        browser_exists = False
+        executable_path = ""
+        if log_storage is not None:
+            await log_storage.add_log(
+                CustomLog(
+                    level="WARNING",
+                    message=(
+                        "检测 htmlrender Chromium 状态失败，将继续尝试准备浏览器："
+                        f" {err}"
+                    ),
+                )
+            )
+
+    if browser_exists:
+        can_launch, launch_detail = await _can_launch_playwright_chromium(
+            project_dir, env
+        )
+        if can_launch:
+            if log_storage is not None:
+                await log_storage.add_log(
+                    CustomLog(
+                        level="INFO",
+                        message=f"htmlrender Chromium 已就绪：{executable_path}",
+                    )
+                )
+            return
+        if log_storage is not None:
+            await log_storage.add_log(
+                CustomLog(
+                    level="WARNING",
+                    message=(
+                        "检测到 Chromium 主程序存在，但浏览器启动自检未通过，"
+                        "将继续尝试补全 Playwright 浏览器组件。"
+                        + (f" 详情：{launch_detail}" if launch_detail else "")
+                    ),
+                )
+            )
+
+    if not block:
+        project_id = str(getattr(project_meta, "project_id", "") or "").strip()
+        existing_task = HTMLRENDER_INSTALL_TASKS.get(project_id)
+        if existing_task is not None and not existing_task.done():
+            if log_storage is not None:
+                await log_storage.add_log(
+                    CustomLog(
+                        level="INFO",
+                        message="htmlrender Chromium 正在后台准备中，请稍候查看进度日志。",
+                    )
+                )
+            return
+
+        if log_storage is not None:
+            await log_storage.add_log(
+                CustomLog(
+                    level="INFO",
+                    message=(
+                        "htmlrender Chromium 尚未就绪，已转为后台准备。"
+                        "实例会继续启动，首次渲染相关功能可稍后再试。"
+                    ),
+                )
+            )
+
+        async def _background_install() -> None:
+            try:
+                await _ensure_htmlrender_browser_ready(
+                    project_meta,
+                    env,
+                    log_storage=log_storage,
+                    block=True,
+                )
+            except Exception as err:
+                log.exception(
+                    f"Background htmlrender browser install failed for {project_id=}."
+                )
+                if log_storage is not None:
+                    await log_storage.add_log(
+                        CustomLog(
+                            level="ERROR",
+                            message=(
+                                "htmlrender Chromium 后台准备失败："
+                                f" {err}"
+                            ),
+                        )
+                    )
+            finally:
+                HTMLRENDER_INSTALL_TASKS.pop(project_id, None)
+
+        if project_id:
+            HTMLRENDER_INSTALL_TASKS[project_id] = asyncio.create_task(
+                _background_install()
+            )
+        else:
+            asyncio.create_task(_background_install())
+        return
+
+    active_proxy = (
+        str(env.get("ALL_PROXY") or env.get("all_proxy") or "").strip()
+        or str(env.get("HTTPS_PROXY") or env.get("https_proxy") or "").strip()
+        or str(env.get("HTTP_PROXY") or env.get("http_proxy") or "").strip()
+    )
+
+    if log_storage is not None:
+        await log_storage.add_log(
+            CustomLog(
+                level="INFO",
+                message=(
+                    "检测到 nonebot_plugin_htmlrender 缺少 Chromium 浏览器，"
+                    "正在预装 Playwright 浏览器到 htmlrender 目录。"
+                ),
+            )
+        )
+        await log_storage.add_log(
+            CustomLog(
+                level="INFO",
+                message=(
+                    "当前将优先使用官方 Chrome for Testing 下载地址："
+                    f"{env.get('PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST', PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST)}"
+                ),
+            )
+        )
+        await log_storage.add_log(
+            CustomLog(
+                level="INFO",
+                message=(
+                    "首次下载体积较大，前几秒可能停留在 0%，这通常是在建立连接或等待服务端返回进度，不代表已经卡死。"
+                ),
+            )
+        )
+        if active_proxy:
+            await log_storage.add_log(
+                CustomLog(
+                    level="INFO",
+                    message=(
+                        "检测到运行时代理，预装浏览器阶段将直接复用当前实例代理环境："
+                        f"{active_proxy}"
+                    ),
+                )
+            )
+        else:
+            await log_storage.add_log(
+                CustomLog(
+                    level="INFO",
+                    message="当前未检测到实例代理，浏览器预装将直接走容器默认网络。",
+                )
+            )
+
+    python_path = _get_project_python_path(project_dir)
+    returncode, stdout_text, stderr_text = await _run_subprocess(
+        python_path,
+        "-m",
+        "playwright",
+        "install",
+        "chromium",
+        cwd=project_dir,
+        env=env,
+        timeout=HTMLRENDER_PLAYWRIGHT_TIMEOUT_SECONDS,
+        log_storage=log_storage,
+    )
+
+    browser_exists, executable_path = await _detect_playwright_chromium_executable(
+        project_dir, env
+    )
+    can_launch, launch_detail = await _can_launch_playwright_chromium(project_dir, env)
+    if returncode != 0 or not browser_exists or not can_launch:
+        error_detail = stderr_text or stdout_text or executable_path or "unknown error"
+        if launch_detail:
+            error_detail = f"{error_detail}\n{launch_detail}".strip()
+        raise RuntimeError(
+            "Failed to preinstall Playwright chromium for nonebot_plugin_htmlrender: "
+            f"{error_detail}"
+        )
+
+    if log_storage is not None:
+        await log_storage.add_log(
+            CustomLog(
+                level="INFO",
+                message=f"htmlrender Chromium 预装完成：{executable_path}",
+            )
+        )
 
 
 def _wrap_shell_command(command: str) -> str:
@@ -303,13 +653,115 @@ async def stop_project_shell_session(project_id: str) -> bool:
     return await ProjectShellSessionManager.stop_session(project_id)
 
 
+def _extract_recent_error_logs(log_storage: LogStorage, limit: int = 12) -> str:
+    recent_logs = log_storage.get_logs(count=limit)
+    if not recent_logs:
+        return ""
+
+    filtered_lines: List[str] = []
+    for item in recent_logs:
+        message = str(getattr(item, "message", "") or "").strip()
+        if not message:
+            continue
+        filtered_lines.append(message)
+
+    if not filtered_lines:
+        return ""
+
+    return "\n".join(filtered_lines[-limit:])
+
+
+async def _ensure_process_started_stably(
+    process: Processor,
+    *,
+    project_name: str,
+    log_storage: LogStorage,
+    timeout: float = PROCESS_START_STABILITY_SECONDS,
+) -> None:
+    deadline = asyncio.get_running_loop().time() + max(timeout, 0)
+    while True:
+        if not process.refresh_runtime_state():
+            status_code = process.process.returncode if process.process else None
+            recent_logs = _extract_recent_error_logs(log_storage)
+            detail_parts = [
+                f"实例 {project_name} 启动失败，进程已退出",
+            ]
+            if status_code is not None:
+                detail_parts.append(f"退出码: {status_code}")
+            if recent_logs:
+                detail_parts.append(f"最近日志:\n{recent_logs}")
+            raise RuntimeError("；".join(detail_parts))
+
+        if asyncio.get_running_loop().time() >= deadline:
+            return
+
+        await asyncio.sleep(0.1)
+
+
+def _resolve_healthcheck_host(host: str) -> str:
+    normalized = str(host or "").strip()
+    if not normalized or normalized in {"0.0.0.0", "::", "*"}:
+        return "127.0.0.1"
+    if normalized == "::1":
+        return "127.0.0.1"
+    return normalized
+
+
+def _can_connect_to_port(host: str, port: int) -> bool:
+    if port <= 0:
+        return False
+
+    target_host = _resolve_healthcheck_host(host)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        try:
+            return sock.connect_ex((target_host, port)) == 0
+        except OSError:
+            return False
+
+
+async def _wait_for_project_ready(
+    process: Processor,
+    *,
+    project_name: str,
+    host: str,
+    port: int,
+    log_storage: LogStorage,
+    timeout: float = PROJECT_READY_TIMEOUT_SECONDS,
+) -> None:
+    deadline = asyncio.get_running_loop().time() + max(timeout, 0)
+    while True:
+        if not process.refresh_runtime_state():
+            status_code = process.process.returncode if process.process else None
+            recent_logs = _extract_recent_error_logs(log_storage)
+            detail_parts = [
+                f"实例 {project_name} 启动失败，进程已退出",
+            ]
+            if status_code is not None:
+                detail_parts.append(f"退出码: {status_code}")
+            if recent_logs:
+                detail_parts.append(f"最近日志:\n{recent_logs}")
+            raise RuntimeError("；".join(detail_parts))
+
+        if _can_connect_to_port(host, port):
+            return
+
+        if asyncio.get_running_loop().time() >= deadline:
+            recent_logs = _extract_recent_error_logs(log_storage)
+            detail_parts = [
+                f"实例 {project_name} 在限定时间内未监听端口 {port}",
+            ]
+            if recent_logs:
+                detail_parts.append(f"最近日志:\n{recent_logs}")
+            raise RuntimeError("；".join(detail_parts))
+
+        await asyncio.sleep(0.25)
+
+
 async def ensure_project_shell_session(
     project: project_service.NoneBotProjectManager,
 ) -> Optional[Processor]:
     project_meta = project.read()
-    runtime_process = ProcessManager.get_process(project_meta.project_id)
-    if runtime_process and runtime_process.refresh_runtime_state():
-        return None
 
     existing_session = ProjectShellSessionManager.get_session(project_meta.project_id)
     if existing_session is not None:
@@ -338,6 +790,7 @@ async def ensure_project_shell_session(
         log_destroy_seconds=Config.process_log_destroy_seconds,
         project_id=project_meta.project_id,
         project_name=project_meta.project_name,
+        terminate_duplicate_processes=False,
     )
     process.log_storage = ensure_project_log_storage(project_meta.project_id)
     await process.start()
@@ -382,17 +835,9 @@ async def get_active_terminal_process(
 async def execute_project_command(
     project: project_service.NoneBotProjectManager, command: str
 ) -> None:
-    process = await get_active_terminal_process(project, create_shell=True)
+    process = await ensure_project_shell_session(project)
     if process is None:
         raise ProcessNotRunning()
-    runtime_process = ProcessManager.get_process(project.project_id)
-    if (
-        runtime_process is not None
-        and runtime_process is process
-        and runtime_process.refresh_runtime_state()
-    ):
-        await process.write_stdin(command.encode())
-        return
 
     wrapped_command = _wrap_shell_command(command)
     await process.write_stdin(wrapped_command.encode())
@@ -409,6 +854,7 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
 
     project_dir = Path(project_meta.project_dir)
     env, _ = build_project_runtime_env(project_meta)
+    log_storage = ensure_project_log_storage(project_meta.project_id)
 
     env_file = project_dir / project_meta.use_env
     env_data = dotenv_values(env_file) if env_file.exists() else {}
@@ -434,6 +880,13 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     env["HOST"] = host
     if not configured_host:
         project.write_to_env(project_meta.use_env, "HOST", host)
+
+    await _ensure_htmlrender_browser_ready(
+        project_meta,
+        env,
+        log_storage=log_storage,
+        block=True,
+    )
 
     process = ProcessManager.get_process(project_meta.project_id)
     if process:
@@ -484,9 +937,23 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
                 project_name=project_meta.project_name,
             )
 
-        process.log_storage = ensure_project_log_storage(project_meta.project_id)
+        process.log_storage = log_storage
         await process.start()
         ProcessManager.add_process(process, project_meta.project_id)
+
+    await _ensure_process_started_stably(
+        process,
+        project_name=project_meta.project_name,
+        log_storage=log_storage,
+    )
+    if run_port:
+        await _wait_for_project_ready(
+            process,
+            project_name=project_meta.project_name,
+            host=host,
+            port=run_port,
+            log_storage=log_storage,
+        )
 
 
 async def restart_nonebot_project_if_running(

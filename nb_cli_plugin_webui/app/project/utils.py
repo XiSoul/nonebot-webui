@@ -82,7 +82,7 @@ def _safe_resolve(path: Path) -> Path:
 def _known_project_roots() -> List[Path]:
     roots: List[Path] = []
     seen = set()
-    for raw_root in (str(getattr(Config, "base_dir", "") or "").strip(), "/external-projects"):
+    for raw_root in (str(getattr(Config, "base_dir", "") or "").strip(), "/external-projects", "/opt/nonebot-projects"):
         if not raw_root:
             continue
         path = _safe_resolve(Path(raw_root))
@@ -202,6 +202,19 @@ def get_nonebot_info_from_toml(working_dir: Path) -> ProjectTomlDetail:
     tool_detail = data.get("tool", dict())
 
     nonebot_info = tool_detail.get("nonebot", dict())
+    
+    # 兼容原版NoneBot项目：如果没有tool.nonebot配置，但有nonebot2依赖，自动生成默认配置
+    if not nonebot_info:
+        dependencies = data.get("project", dict()).get("dependencies", [])
+        has_nonebot = any("nonebot2" in str(dep) for dep in dependencies)
+        if has_nonebot:
+            nonebot_info = {
+                "plugins": [],
+                "plugin_dirs": [],
+                "adapters": [],
+                "builtin_plugins": []
+            }
+
     adapters = _normalize_adapters(nonebot_info.get("adapters", list()))
     plugins = _normalize_string_list(nonebot_info.get("plugins", list()))
     plugin_dirs = _normalize_string_list(nonebot_info.get("plugin_dirs", list()))

@@ -106,7 +106,7 @@ async def open_terminal(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 为未运行实例创建常驻 Shell 终端会话
+    - 为实例创建常驻 Shell 终端会话，可与运行中的机器人并存
     """
     await ensure_project_shell_session(project)
     return GenericResponse(detail="success")
@@ -118,7 +118,7 @@ async def execute_command(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 在实例目录中执行一次命令, 适用于实例未运行时手动安装依赖
+    - 在实例目录中的独立 Shell 中执行一次命令，适用于手动安装依赖或排障
     """
     stripped = command.strip()
     if not stripped:
@@ -145,7 +145,7 @@ async def execute_command(
 
 @router.get("/log/history", response_model=GenericResponse[List[ProcessLog]])
 async def get_log_history(
-    log_count: int, log_id: str
+    log_id: str, log_count: Optional[str] = None
 ) -> GenericResponse[List[ProcessLog]]:
     """
     - 获取历史进程日志
@@ -154,7 +154,15 @@ async def get_log_history(
     if log_storage is None:
         return GenericResponse(detail=[])
 
-    result = log_storage.get_logs(count=log_count)
+    normalized_count = 200
+    raw_log_count = str(log_count or "").strip()
+    if raw_log_count:
+        try:
+            normalized_count = max(1, int(raw_log_count))
+        except ValueError:
+            normalized_count = 200
+
+    result = log_storage.get_logs(count=normalized_count)
     return GenericResponse(detail=result)
 
 

@@ -12,6 +12,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../nb_cli_plugin_webui/dist'
+    outDir: '../nb_cli_plugin_webui/dist',
+    emptyOutDir: true
   }
 })

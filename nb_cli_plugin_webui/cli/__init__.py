@@ -1,5 +1,6 @@
 import os
 import webbrowser
+from pathlib import Path
 from typing import List, cast
 
 import click
@@ -9,7 +10,6 @@ from noneprompt import Choice, ListPrompt, ConfirmPrompt, CancelledError
 from nb_cli.cli import CLI_DEFAULT_STYLE, ClickAliasedGroup, run_sync, run_async
 
 from nb_cli_plugin_webui.i18n import _
-from nb_cli_plugin_webui.app.application import STATIC_PATH
 from nb_cli_plugin_webui.app.handlers.project import PROJECT_DATA_PATH
 from nb_cli_plugin_webui.app.config import (
     CONFIG_FILE_PATH,
@@ -22,19 +22,27 @@ from .token import token
 from .config import config
 from .docker import docker
 
+STATIC_PATH = Path(__file__).resolve().parents[1] / "dist"
 
-@click.group(
-    cls=ClickAliasedGroup, invoke_without_command=True, help=_("Start up NB CLI UI.")
-)
-@click.pass_context
-@run_async
-async def webui(ctx: click.Context):
-    if not STATIC_PATH.exists():
+
+def _ensure_static_assets_ready() -> bool:
+    if STATIC_PATH.exists():
+        return True
+
+    click.secho(
+        _("WebUI dist directory not found, please reinstall to fix."), fg="red"
+    )
+    if "WEBUI_BUILD" in os.environ:
         click.secho(
-            _("WebUI dist directory not found, please reinstall to fix."), fg="red"
+            _(
+                "If you mounted the source repo into /app, run `pnpm -C frontend run build-only` first or avoid overriding /app in the container."
+            ),
+            fg="yellow",
         )
-        return
+    return False
 
+
+def _prepare_runtime_config() -> bool:
     if "WEBUI_BUILD" in os.environ:
         generated_token = ensure_docker_config()
         if generated_token:
@@ -48,23 +56,39 @@ async def webui(ctx: click.Context):
                 fg="green",
             )
             click.secho(_("Token: {token}").format(token=generated_token), fg="yellow")
-            click.secho(
-                _("ATTENTION, TOKEN ONLY SHOW ONCE."), fg="red", bold=True
-            )
+            click.secho(_("ATTENTION, TOKEN ONLY SHOW ONCE."), fg="red", bold=True)
+
+    if not CONFIG_FILE_PATH.exists():
+        return True
+
+    try:
+        Config.load(CONFIG_FILE_PATH)
+    except ValidationError:
+        click.secho(_("Config file is broken, run `nb ui clear` to fix."), fg="red")
+        return False
+
+    return True
+
+
+@click.group(
+    cls=ClickAliasedGroup, invoke_without_command=True, help=_("Start up NB CLI UI.")
+)
+@click.pass_context
+@run_async
+async def webui(ctx: click.Context):
+    if not _prepare_runtime_config():
+        return
+
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if not _ensure_static_assets_ready():
+        return
 
     if not CONFIG_FILE_PATH.exists():
         if not Config.check_necessary_config():
             await generate_config()
             return
-    else:
-        try:
-            Config.load(CONFIG_FILE_PATH)
-        except ValidationError:
-            click.secho(_("Config file is broken, run `nb ui clear` to fix."), fg="red")
-            return
-
-    if ctx.invoked_subcommand is not None:
-        return
 
     command = cast(ClickAliasedGroup, ctx.command)
 
@@ -112,6 +136,12 @@ async def webui(ctx: click.Context):
 @run_async
 async def run(host: str, port: int):
     from nb_cli_plugin_webui import server
+
+    if not _ensure_static_assets_ready():
+        return
+
+    if not _prepare_runtime_config():
+        return
 
     if not host:
         host = Config.host

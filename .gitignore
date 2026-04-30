@@ -267,6 +267,10 @@ dist_chunks/
 temp_filemanager_remote*.js
 deploy_nonebot_*.sh
 
+# Local package/cache stores
+.pnpm-store/
+.tmp-poetry311/
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
@@ -440,6 +444,18 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Local runtime state / data
+config.json
+project.json
+data/
+global_logs/
+
+# Local agent / workspace state
+.claude/
+
+# Local notes
+PROJECT_LOGIC.md
 
 # Spyder project settings
 .spyderproject

@@ -5,7 +5,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import Body, Depends, APIRouter
+from fastapi import BackgroundTasks, Body, Depends, APIRouter
 from dotenv import dotenv_values
 import tomlkit
 from nb_cli.config.parser import CONFIG_FILE_ENCODING
@@ -48,6 +48,22 @@ from .schemas import (
 )
 
 router = APIRouter()
+
+
+async def _sync_project_and_restart_if_needed(
+    project: NoneBotProjectManager,
+    *,
+    sync_project_toml: bool = False,
+) -> None:
+    try:
+        if sync_project_toml:
+            await project.sync_from_project_toml()
+        await restart_nonebot_project_if_running(project)
+    except Exception as err:
+        project_id = getattr(project, "project_id", "unknown")
+        log.exception(
+            f"Background project config sync/restart failed for {project_id=}: {err}"
+        )
 
 
 @router.get("/env/list", response_model=GenericResponse[List[str]])
@@ -274,6 +290,7 @@ async def _get_project_nonebot_plugin_config(
 async def _update_project_config(
     module_type: ConfigModuleType,
     data: ModuleConfigUpdateRequest,
+    background_tasks: BackgroundTasks,
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
@@ -302,7 +319,7 @@ async def _update_project_config(
         )
         table[data.k] = data.v
         project.write_toml_data(toml_data)
-        await restart_nonebot_project_if_running(project)
+        background_tasks.add_task(_sync_project_and_restart_if_needed, project)
 
         return GenericResponse(detail="success")
 
@@ -346,7 +363,7 @@ async def _update_project_config(
     for f in project_dir.iterdir():
         if data.env == f.name:
             modify_config()
-            await restart_nonebot_project_if_running(project)
+            background_tasks.add_task(_sync_project_and_restart_if_needed, project)
             return GenericResponse(detail="success")
 
     raise EnvNotFound()
@@ -371,6 +388,7 @@ async def get_dotenv_file(
 
 @router.put("/dotenv", response_model=GenericResponse[str])
 async def update_dotenv_file(
+    background_tasks: BackgroundTasks,
     env: str = "",
     data: str = "",
     payload: Dict[str, str] = Body(default={}),
@@ -396,7 +414,7 @@ async def update_dotenv_file(
         ensure_project_port_is_unique(port, exclude_project_id=project_meta.project_id)
 
     env_file.write_text(data, encoding="utf-8")
-    await restart_nonebot_project_if_running(project)
+    background_tasks.add_task(_sync_project_and_restart_if_needed, project)
 
     return GenericResponse(detail="success")
 
@@ -417,6 +435,7 @@ async def get_pyproject_file(
 
 @router.put("/pyproject", response_model=GenericResponse[str])
 async def update_pyproject_file(
+    background_tasks: BackgroundTasks,
     data: str = "",
     payload: Dict[str, str] = Body(default={}),
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
@@ -441,8 +460,11 @@ async def update_pyproject_file(
         )
 
     pyproject_file.write_text(data, encoding=CONFIG_FILE_ENCODING)
-    await project.sync_from_project_toml()
-    await restart_nonebot_project_if_running(project)
+    background_tasks.add_task(
+        _sync_project_and_restart_if_needed,
+        project,
+        sync_project_toml=True,
+    )
 
     return GenericResponse(detail="success")
 

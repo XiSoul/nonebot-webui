@@ -7,150 +7,86 @@
 
 # NB CLI Plugin WebUI
 
-_✨ NoneBot2 命令行工具 前端可视化页面（WebUI） 插件 ✨_
+_✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 
 </div>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/nonebot/nb-cli-plugin-webui/master/LICENSE">
-    <img src="https://img.shields.io/github/license/nonebot/cli-plugin-webui" alt="license">
+  <a href="https://github.com/XiSoul/nonebot-webui">
+    <img src="https://img.shields.io/badge/GitHub-XiSoul%2Fnonebot--webui-181717?style=flat-square&logo=github" alt="GitHub">
   </a>
-  <a href="https://pypi.python.org/pypi/nb-cli-plugin-webui">
-    <img src="https://img.shields.io/pypi/v/nb-cli-plugin-webui" alt="pypi">
+  <a href="https://raw.githubusercontent.com/XiSoul/nonebot-webui/master/LICENSE">
+    <img src="https://img.shields.io/github/license/XiSoul/nonebot-webui?style=flat-square" alt="license">
   </a>
   <img src="https://img.shields.io/badge/python-3.8+-blue" alt="python">
-  <a href="https://results.pre-commit.ci/latest/github/nonebot/nb-cli-plugin-webui/master">
-    <img src="https://results.pre-commit.ci/badge/github/nonebot/cli-plugin-webui/master.svg" alt="pre-commit" />
-  </a>
   <br />
   <a href="https://jq.qq.com/?_wv=1027&k=5OFifDh">
     <img src="https://img.shields.io/badge/QQ%E7%BE%A4-1074735930-orange?style=flat-square" alt="QQ Chat Group">
   </a>
-  <a href="https://qun.qq.com/qqweb/qunpro/share?_wv=3&_wwv=128&appChannel=share&inviteCode=7b4a3&appChannel=share&businessType=9&from=246610&biz=ka">
-    <img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-NoneBot-5492ff?style=flat-square" alt="QQ Channel">
-  </a>
-  <a href="https://t.me/botuniverse">
-    <img src="https://img.shields.io/badge/telegram-botuniverse-blue?style=flat-square" alt="Telegram Channel">
-  </a>
-  <a href="https://discord.gg/VKtE6Gdc4h">
-    <img src="https://discordapp.com/api/guilds/847819937858584596/widget.png?style=shield" alt="Discord Server">
+  <a href="https://github.com/XiSoul/nonebot-webui/releases">
+    <img src="https://img.shields.io/badge/Releases-Update%20Notes-2ea44f?style=flat-square" alt="Releases">
   </a>
 </p>
 
-## 功能
+## 项目简介
 
-- 可视化的 nb cli 操作
-  - 创建新的 NoneBot 实例
-  - 添加已有的 NoneBot 实例
-  - 拓展（插件、适配器、驱动器）管理（安装、卸载）
-- 可同时管理多个 NoneBot 实例
-- 为启动的 NoneBot 实例提供状态展示、性能查询
-- 可视化的 NoneBot 实例配置
+这是一个基于 NoneBot WebUI 深度二改的项目，重点面向 NAS、Docker、WSL 和长期运行场景。
 
-## 功能模块
+它更偏向“机器人实例运维面板”，而不只是原版 `nb-cli` 的简单图形封装，核心目标是：
 
-### 1. 实例管理
+- 同时管理多个 NoneBot 实例
+- 直接接入 NAS / 宿主机上已经存在的机器人项目
+- 尽量减少手动进容器、手动改配置、手动查日志的频率
+- 让常用的运行、安装依赖、插件管理、文件修改、日志排查都能在 WebUI 里完成
 
-- 创建实例、接入已有实例、切换当前实例
-- 实例列表集中展示实例名称、运行状态、路径信息
-- 添加已有实例时支持相对路径和容器内绝对路径，系统会自动解析为运行时真实路径
-- 支持在实例选择页直接切换运行环境：`.env` / `.env.prod`
-- 支持实例启停、重启、删除和状态同步
+## 主要功能
 
-### 2. 配置管理
+- 多实例管理：创建实例、接入已有实例、切换实例、启停与状态同步
+- 配置与文件：在线编辑 `pyproject.toml`、`.env`、`.env.prod` 以及实例目录文件
+- 扩展管理：安装、卸载、更新插件 / 驱动 / 适配器，并处理依赖安装流程
+- 日志与通知：统一查看 WebUI 与实例日志，通知中心常驻留痕
+- 备份恢复：支持本地备份、上传恢复，以及 WebDAV / S3 远端备份
+- 容器场景支持：代理、镜像源、路径映射、随机 token、外部实例接入
 
-- 图形化编辑 `pyproject.toml`、`.env`、`.env.prod`
-- 配置保存后可按实例运行状态自动触发重启
-- 支持运行脚本、环境文件、代理设置等实例级配置
-- 支持安全设置、登录凭证修改、端口修改
+## 这次二改的重点
 
-### 3. 扩展生态
+- 重点适配 NAS / Docker / WSL 的长期运行场景
+- 优化已有实例导入，支持相对路径和容器内绝对路径识别
+- 修复坏虚拟环境导致的依赖安装失败，自动备份并重建 `.venv`
+- 补齐导入实例后的驱动 / 依赖初始化流程，减少第三步报错
+- 调整概览、通知、日志、终端交互，让运维动作更集中
+- 新增关于页，文档入口和项目信息集中展示
 
-- 拓展商店浏览、安装、卸载插件/驱动/适配器
-- 已安装模块管理、版本检查、列表刷新
-- 实例运行时支持更顺滑的插件安装与自动重启流程
+## 适合谁用
 
-### 4. 文件管理
-
-- 支持实例目录文件浏览与编辑
-- 可根据实例安装方式自动识别容器内目录或映射目录
-- 支持常见文件操作与在线修改插件代码
-
-### 5. 备份恢复
-
-- 支持实例目录打包备份
-- 支持本地下载、本地上传恢复
-- 支持 WebDAV、S3 远端备份与恢复
-- 支持手动测试连接、定时备份、备份保留份数
-- 支持备份密码、恢复时密码检测、日志备份筛选
-
-### 6. 日志与通知
-
-- 提供 WebUI 日志与实例日志统一查看
-- 支持日志等级过滤、日期清理、消息写入日志
-- 顶部通知中心统一样式、支持展开详情
-- 概览页支持实例消息识别与运行状态展示
-
-### 7. 容器与网络
-
-- 支持 Docker 运行时代理、镜像源、pip 源配置
-- 支持代理档案保存、应用、删除与连通性测试
-- 支持单输入框统一配置 HTTP/HTTPS/SOCKS 代理
-- 适配容器启动场景下的随机 token、端口、自定义启动信息
-
-## 二改特性
-
-当前仓库在原版基础上做了面向实际部署场景的增强，重点包括：
-
-- 登录安全增强：永久 token / 随机 token 双模式、随机 token 输出到 Docker 日志、旧凭证校验、新凭证二次确认、可见性切换、长度校验
-- 服务端口可配：默认 `18080`，支持在安全设置中修改，并加入 Docker 端口映射提示
-- 概览页重构：登录后主视图直接进入概览，欢迎区、实例信息、实例消息、运行状态展示更符合运维场景
-- 实例环境切换前移：在实例选择页直接切换 `.env` / `.env.prod`，减少跨页面操作
-- 拓展安装流程优化：安装成功后按实例状态自动重启，配置保存后自动重启机器人
-- 全局代理重构：统一输入框支持 HTTP / HTTPS / SOCKS，支持保存代理档案和连通性测试
-- 文件管理增强：支持实例目录/映射目录识别、目录浏览、在线编辑、布局优化
-- 备份恢复增强：支持 WebDAV / S3、手动测试、定时备份、备份密码、日志备份筛选、远端拉取恢复
-- 全局日志中心：支持 WebUI 与实例日志统一查看、日志等级筛选、操作入日志、通知详情展开
-- Docker 场景增强：支持容器运行时代理和镜像源配置，适配更稳定的测试/生产部署流程
-
-## 项目特色
-
-- 面向多实例运维，而不只是单实例可视化
-- 面向 Docker 场景做了较多适配，适合直接部署到测试机或生产机
-- 将“安全、代理、备份、日志、文件管理”整合到统一 WebUI 中，减少人工进容器操作
-- 更偏向实际运营和维护机器人，而不是只做基础的 `nb-cli` 图形封装
-- 保留原有 NoneBot 生态兼容性的同时，补齐了长期运行和远程管理需要的能力
+- NAS 上已经有一批 NoneBot 项目，想统一接进一个面板管理的人
+- 用 Docker 跑 WebUI，希望新建实例和外部已有实例分开挂载的人
+- 需要经常安装依赖、排查插件问题、看日志、改配置的人
+- 不想每次都手动进容器敲命令的人
 
 ## 使用
 
-### 安装
+### Docker 安装
 
-**需要 [nb-cli](https://github.com/nonebot/nb-cli/)**
+如果你主要是部署到 NAS、Docker 或 WSL，直接使用 Docker Hub 镜像就行：
 
-使用 nb-cli 安装
+- `docker.io/xisoul/nonebot-webui:latest`
+- `docker.io/xisoul/nonebot-webui:master`
+- `docker.io/xisoul/nonebot-webui:${version}`
+
+推荐优先使用显式版本号，例如 `0.4.2`、`0.4`，后面做升级、回滚、版本检测会更方便。
+
+### 非 Docker 安装
+
+如果你明确是本机直接运行 `nb-cli`，也可以走插件安装方式：
 
 ```shell
 nb self install nb-cli-plugin-webui
 ```
 
-使用 Docker 运行
-
-```shell
-docker pull docker.io/xisoul/nonebot-webui:latest
-```
-
-镜像默认使用 Docker Hub：
-
-- `docker.io/xisoul/nonebot-webui:latest`
-- `docker.io/xisoul/nonebot-webui:master`
-- `docker.io/xisoul/nonebot-webui:${version}`
-- `docker.io/xisoul/nonebot-webui:${major}.${minor}`
-
-推荐优先使用显式版本号，例如 `0.4.2`、`0.4`，方便后续做升级、回滚和版本检测。
-
 ### 生产部署
 
-推荐直接用 Docker Hub 镜像部署：
+推荐最少保留这几项挂载：
 
 ```shell
 docker run -d \
@@ -161,25 +97,26 @@ docker run -d \
   -e PORT=18080 \
   -v /home/xisoul/nonebot-webui-data/projects:/projects \
   -v /home/xisoul/nonebot-webui-external-projects:/external-projects \
+  # 挂载你本地的NoneBot项目目录到容器内，容器会自动扫描并添加所有项目
+  -v /path/to/your/nonebot/projects:/opt/nonebot-projects \
   -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
   -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
-  docker.io/xisoul/nonebot-webui:latest
+  xisoul/nonebot-webui:latest
 ```
+
+#### 自定义项目挂载说明：
+你可以把宿主机上任意目录下的所有NoneBot项目，通过挂载到容器的`/opt/nonebot-projects`目录来实现自动接入：
+- 容器启动后会自动扫描该目录下的所有子目录
+- 自动识别原版NoneBot项目（不需要做任何适配修改）
+- 自动添加到WebUI的实例列表，支持启停、依赖管理、日志查看等全功能操作
 
 也可以直接使用仓库里的 `docker-compose.yml`。
 
-部署前请确保下面这些宿主机路径存在且可写：
+只需要记住：
 
-- `/home/xisoul/nonebot-webui-data/projects`
-- `/home/xisoul/nonebot-webui-external-projects`
-- `/home/xisoul/nonebot-webui-data/config.json`
-- `/home/xisoul/nonebot-webui-data/project.json`
-
-注意：
-
-- `/app/config.json` 与 `/app/project.json` 会在运行时被程序写回，不能只读挂载
-- Docker 模式下，WebUI 新建实例默认放在 `/projects`
-- 接入宿主机或 NAS 上已经存在的 NoneBot 项目，建议统一挂到 `/external-projects`
+- `/projects` 给 WebUI 新建实例使用
+- `/external-projects` 给宿主机 / NAS 里已经存在的实例使用
+- `/app/config.json` 与 `/app/project.json` 会被程序写回，不能只读挂载
 
 ### 路径映射说明
 
@@ -192,27 +129,17 @@ Docker / NAS 场景下请区分“宿主机路径”和“容器内路径”：
 
 - 错误：`/vol1/1000/nonebot -> /vol1/1000/nonebot`
 
-推荐这样映射：
+推荐映射方式：
 
-- WebUI 自己新建的实例目录：`宿主机目录 -> /projects`
-- NAS 上已经存在的 NoneBot 项目目录：`宿主机目录 -> /external-projects`
+- WebUI 自己新建的实例：`宿主机目录 -> /projects`
+- 已有机器人项目：`宿主机目录 -> /external-projects`
 
-例如你的 NAS 目录是：
+群晖 / NAS 常见示例：
 
-- `/vol1/1000/nonebot`
+- 宿主机已有目录：`/vol1/1000/nonebot`
+- 容器挂载方式：`/vol1/1000/nonebot -> /external-projects`
 
-如果这里面放的是已经存在的机器人实例，推荐挂载成：
-
-- `/vol1/1000/nonebot -> /external-projects`
-
-如果你还想让 WebUI 新建实例，再额外准备一块目录挂到：
-
-- `宿主机某个目录 -> /projects`
-
-这样最清晰：
-
-- `/projects`：WebUI 创建的新实例
-- `/external-projects`：外部已有实例
+如果你还需要让 WebUI 自己创建新实例，再单独准备一块目录映射到 `/projects` 即可。
 
 ### 添加已有实例时怎么填路径
 
@@ -223,6 +150,7 @@ Docker / NAS 场景下请区分“宿主机路径”和“容器内路径”：
 - `/external-projects/3998382152`
 
 WebUI 会自动把它解析并保存为容器内的真实绝对路径。
+
 如果当前是 Docker / NAS 部署，不要填写宿主机自己的物理路径，例如：
 
 - `/vol1/...`
@@ -230,6 +158,8 @@ WebUI 会自动把它解析并保存为容器内的真实绝对路径。
 - `/home/...`
 
 这些路径对容器里的 WebUI 来说是不可见的，必须填写容器内路径。
+
+另外，添加的目录本身需要是一个 NoneBot 项目根目录，至少应当能看到 `pyproject.toml`。如果 `pyproject.toml` 在子目录里，就填写那个子目录，不要填到父目录。
 
 本镜像当前不内置 Playwright Linux 系统依赖；若你管理的外部项目自身依赖 Playwright，请在对应项目运行环境中单独安装。
 
@@ -275,10 +205,12 @@ docker logs nonebot-webui
 - `WEBUI_PIP_EXTRA_INDEX_URL`
 - `WEBUI_PIP_TRUSTED_HOST`
 
-## 开发
+## 常见提醒
 
-待补充......
-
-## 补充
-
-nb-cli WebUI 目前正处于快速迭代中，欢迎各位提交在使用过程中发现的 BUG 和建议。
+- WebUI 新建实例默认放在 `/projects`
+- 外部已有实例建议统一挂到 `/external-projects`
+- 添加已有实例时，路径必须填写容器内路径，不要填写 NAS 宿主机路径
+- 如果实例根目录里没有 `pyproject.toml`，说明你填错目录层级了
+- 首次登录凭证请去容器日志里看
+- 想回头找 token，直接看容器日志，不是在页面里反查
+- 如果某些插件依赖 Playwright 或系统库，请在对应机器人项目自己的运行环境里安装，不是装在 WebUI 容器里
