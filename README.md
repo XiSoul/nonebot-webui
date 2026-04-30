@@ -81,7 +81,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 如果你明确是本机直接运行 `nb-cli`，也可以走插件安装方式：
 
 ```shell
-nb self install nb-cli-plugin-webui
+nb self install nb-cli-plugin-webui-xisoul
 ```
 
 ### 生产部署
