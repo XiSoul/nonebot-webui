@@ -54,8 +54,7 @@ FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 ARG APP_VERSION=0.4.4
 ARG VCS_REF=unknown
 ARG APT_MIRROR
-VOLUME ["/data"]
-VOLUME ["/opt/nonebot-projects"]
+EXPOSE 18080
 
 # 创建挂载目录
 RUN mkdir -p /opt/nonebot-projects && chmod 777 /opt/nonebot-projects

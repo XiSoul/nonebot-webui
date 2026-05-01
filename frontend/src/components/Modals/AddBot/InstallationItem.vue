@@ -18,6 +18,7 @@ const logKey = ref('')
 const isFailed = ref(false)
 const logContainer = ref<HTMLElement>()
 const logData = ref<ProcessLog[]>([])
+const lastErrorMessage = ref('')
 
 const getLogData = computed(() => [...logData.value].reverse())
 const normalizeProjectName = (value: string) => value.trim().replace(/ /g, '-').toLowerCase()
@@ -26,6 +27,7 @@ const addBot = async () => {
   if (isFailed.value) {
     isFailed.value = false
     store.warningMessage = ''
+    lastErrorMessage.value = ''
 
     logData.value = []
     logData.value.push({
@@ -58,9 +60,12 @@ const addBot = async () => {
   if (error) {
     store.warningMessage = error.detail?.toString() ?? ''
     isFailed.value = true
+    lastErrorMessage.value = store.warningMessage
   }
 
   if (data) {
+    isFailed.value = false
+    lastErrorMessage.value = ''
     logKey.value = data.detail
     open()
   }
@@ -98,6 +103,7 @@ watch(
     } else if (data.message === IS_FAILED) {
       close()
       isFailed.value = true
+      lastErrorMessage.value = '安装依赖或初始化实例失败，请检查日志后重试。'
     }
   }
 )
@@ -192,7 +198,18 @@ onUnmounted(() => {
         </tbody>
       </table>
 
-      <table v-else class="overflow-auto h-80 !flex table table-xs">
+      <div v-else class="flex flex-col gap-3">
+        <div v-if="isFailed" role="alert" class="alert alert-error">
+          <span class="material-symbols-outlined">error</span>
+          <div class="flex flex-col gap-1">
+            <span class="font-medium">实例添加失败</span>
+            <span class="text-sm break-all">
+              {{ lastErrorMessage || store.warningMessage || '安装依赖或初始化实例时发生错误。' }}
+            </span>
+          </div>
+        </div>
+
+        <table class="overflow-auto h-80 !flex table table-xs">
         <tbody ref="logContainer">
           <tr
             v-for="(log, index) in getLogData"
@@ -210,7 +227,8 @@ onUnmounted(() => {
             <td class="flex">{{ log.message }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
 
     <div class="flex items-center justify-between">

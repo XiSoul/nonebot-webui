@@ -32,7 +32,7 @@ fastapi = "^0.95.1"
 APScheduler = "^3.10.1"
 loguru = "^0.7.0"
 PyJWT = "^2.7.0"
-bcrypt = "^4.0.1"
+bcrypt = "4.0.1"
 passlib = "^1.7.4"
 uvicorn = { extras = ["standard"], version = "^0.22.0" }
 httpx = { extras = ["socks"], version = "^0.24.1" }

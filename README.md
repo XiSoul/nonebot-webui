@@ -117,6 +117,7 @@ docker run -d \
 - `/projects` 给 WebUI 新建实例使用
 - `/external-projects` 给宿主机 / NAS 里已经存在的实例使用
 - `/app/config.json` 与 `/app/project.json` 会被程序写回，不能只读挂载
+- 如果 NAS 面板自动带出 `/data` 等默认卷，建议手动删掉，再按上面这些路径重新配置
 
 ### 路径映射说明
 

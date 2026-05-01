@@ -43,9 +43,6 @@ HTMLRENDER_PROJECT_FILES = (
     "Pipfile.lock",
 )
 HTMLRENDER_PLAYWRIGHT_TIMEOUT_SECONDS = 20 * 60
-PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST = (
-    "https://cdn.playwright.dev/chrome-for-testing-public"
-)
 PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT = "300000"
 HTMLRENDER_INSTALL_TASKS: Dict[str, asyncio.Task] = dict()
 PROCESS_START_STABILITY_SECONDS = 2.0
@@ -224,11 +221,6 @@ def _apply_htmlrender_download_env(env: dict, project_meta, project_dir: Path) -
     ).strip()
     if explicit_chromium_host:
         env["PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST"] = explicit_chromium_host
-    else:
-        env.setdefault(
-            "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST",
-            PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST,
-        )
 
     explicit_timeout = str(
         env_data.get("PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT")
@@ -305,7 +297,6 @@ def _build_shell_bootstrap_script(
         f"__nb_webui_saved_https_proxy={saved_https_proxy}\n"
         f"__nb_webui_saved_all_proxy={saved_all_proxy}\n"
         f"__nb_webui_saved_no_proxy={saved_no_proxy}\n"
-        f"export PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST={shlex.quote(PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST)}\n"
         f"export PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT={shlex.quote(PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT)}\n"
         "pip() {\n"
         '  case "${HTTP_PROXY:-${http_proxy:-}} ${HTTPS_PROXY:-${https_proxy:-}} ${ALL_PROXY:-${all_proxy:-}}" in\n'
@@ -566,8 +557,7 @@ async def _ensure_htmlrender_browser_ready(
             CustomLog(
                 level="INFO",
                 message=(
-                    "当前将优先使用官方 Chrome for Testing 下载地址："
-                    f"{env.get('PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST', PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST)}"
+                    "当前将使用 Playwright 默认下载源；如项目单独配置了镜像地址，会优先使用项目自己的设置。"
                 ),
             )
         )

@@ -956,24 +956,30 @@ async def add_nonebot_project(data: AddProjectData) -> str:
 
     project_id = generate_complexity_string(6)
     manager = NoneBotProjectManager(project_id=project_id)
-    await manager.add_project(
-        project_name=project_name,
-        project_dir=project_dir,
-        mirror_url=data.mirror_url,
-        adapters=stored_adapters,
-        drivers=stored_drivers,
-        plugins=stored_plugins,
-        plugin_dirs=resolved_plugin_dirs,
-        discovered_plugin_dirs=discovered_plugin_dirs,
-        builtin_plugins=resolved_builtin_plugins,
-        use_env=current_env,
-        sync_plugin_config=False,
-    )
+
+    async def persist_project_metadata():
+        await manager.add_project(
+            project_name=project_name,
+            project_dir=project_dir,
+            mirror_url=data.mirror_url,
+            adapters=stored_adapters,
+            drivers=stored_drivers,
+            plugins=stored_plugins,
+            plugin_dirs=resolved_plugin_dirs,
+            discovered_plugin_dirs=discovered_plugin_dirs,
+            builtin_plugins=resolved_builtin_plugins,
+            use_env=current_env,
+            sync_plugin_config=False,
+        )
+        return True
 
     async def sync_project_metadata():
         await manager.sync_from_project_toml()
         return True
 
+    process.add(log.add_log, CustomLog(message="Persist project metadata..."))
+    process.add(persist_project_metadata)
+    process.add(log.add_log, CustomLog(message="Finished persist."))
     process.add(log.add_log, CustomLog(message="Sync project metadata..."))
     process.add(sync_project_metadata)
     process.add(log.add_log, CustomLog(message="Finished sync."))
