@@ -43,6 +43,15 @@ export const defaultRoutes: NavItem[] = [
     }
   },
   {
+    googleIcon: 'terminal',
+    name: '终端',
+    routeData: {
+      path: '/terminal',
+      name: 'Terminal',
+      component: () => import('@/views/Terminal/TerminalIndex.vue')
+    }
+  },
+  {
     googleIcon: 'extension',
     name: '拓展商店',
     routeData: {

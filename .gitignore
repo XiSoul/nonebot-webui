@@ -453,6 +453,7 @@ global_logs/
 
 # Local agent / workspace state
 .claude/
+.claude/worktrees/
 
 # Local notes
 PROJECT_LOGIC.md

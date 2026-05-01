@@ -22,8 +22,12 @@ from .service import (
     run_nonebot_project,
     execute_project_command,
     ensure_project_log_storage,
+    ensure_project_runtime_log_storage,
+    ensure_project_shell_log_storage,
     ensure_project_shell_session,
     get_active_terminal_process,
+    get_project_runtime_log_key,
+    get_project_shell_log_key,
 )
 from .exceptions import DriverNotFound, AdapterNotFound
 
@@ -110,6 +114,28 @@ async def open_terminal(
     """
     await ensure_project_shell_session(project)
     return GenericResponse(detail="success")
+
+
+@router.get("/terminal/log-key", response_model=GenericResponse[str])
+async def get_terminal_log_key(
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 获取实例维护 Shell 对应的日志 key
+    """
+    ensure_project_shell_log_storage(project.project_id)
+    return GenericResponse(detail=get_project_shell_log_key(project.project_id))
+
+
+@router.get("/runtime/log-key", response_model=GenericResponse[str])
+async def get_runtime_log_key(
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 获取实例运行日志对应的日志 key
+    """
+    ensure_project_runtime_log_storage(project.project_id)
+    return GenericResponse(detail=get_project_runtime_log_key(project.project_id))
 
 
 @router.post("/execute", response_model=GenericResponse[str])

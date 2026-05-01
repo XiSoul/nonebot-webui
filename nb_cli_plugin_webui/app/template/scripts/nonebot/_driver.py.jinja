@@ -1,6 +1,7 @@
 {% macro get_nonebot_driver() %}
 import json
 import nonebot
+from pathlib import Path
 
 
 nonebot.logger.remove()
@@ -8,12 +9,24 @@ nonebot.init()
 driver = nonebot.get_driver()
 
 
+def _json_default(value):
+    if isinstance(value, set):
+        return sorted(value, key=lambda item: str(item))
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "dict"):
+        return value.dict()
+    if hasattr(value, "__dict__"):
+        return value.__dict__
+    return str(value)
+
+
 def _model_dump_json(model):
     if hasattr(model, "model_dump_json"):
         return model.model_dump_json()
     if hasattr(model, "json"):
         return model.json()
-    return json.dumps(model)
+    return json.dumps(model, default=_json_default, ensure_ascii=False)
 
 
 def _model_json_schema(model):
@@ -22,4 +35,8 @@ def _model_json_schema(model):
     if hasattr(model, "schema"):
         return model.schema()
     return {}
+
+
+def _safe_json_dumps(value):
+    return json.dumps(value, default=_json_default, ensure_ascii=False)
 {% endmacro %}

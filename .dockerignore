@@ -54,11 +54,16 @@ dist_pkg/
 temp_filemanager_remote*.js
 deploy_nonebot_*.sh
 *.log
+build-operation-refactor.log
 
 # Dev container
 .devcontainer
 .claude
 data/
+.pnpm-store/
+global_logs/
+projects/
+external-projects/
 
 # Scripts (dev only)
 script/

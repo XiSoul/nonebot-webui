@@ -6,4 +6,4 @@
 
 if metadata:
     if metadata.config:
-        print(f"nonebot_plugin_config_schema:{json.dumps(_model_json_schema(metadata.config))}")
+        print(f"nonebot_plugin_config_schema:{_safe_json_dumps(_model_json_schema(metadata.config))}")

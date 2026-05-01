@@ -18,3 +18,21 @@ export const openProjectTerminal = async (projectId: string) => {
     }
   })
 }
+
+export const getProjectTerminalLogKey = async (projectId: string) => {
+  return client.get<{ detail: string }, { detail?: string }>({
+    url: '/v1/process/terminal/log-key',
+    query: {
+      project_id: projectId
+    }
+  })
+}
+
+export const getProjectRuntimeLogKey = async (projectId: string) => {
+  return client.get<{ detail: string }, { detail?: string }>({
+    url: '/v1/process/runtime/log-key',
+    query: {
+      project_id: projectId
+    }
+  })
+}

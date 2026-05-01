@@ -47,6 +47,7 @@ PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT = "300000"
 HTMLRENDER_INSTALL_TASKS: Dict[str, asyncio.Task] = dict()
 PROCESS_START_STABILITY_SECONDS = 2.0
 PROJECT_READY_TIMEOUT_SECONDS = 90.0
+PROJECT_SHELL_LOG_SUFFIX = ":shell"
 
 
 class ProjectShellSessionManager:
@@ -77,6 +78,14 @@ class ProjectShellSessionManager:
         except Exception:
             pass
         return True
+
+
+def get_project_runtime_log_key(project_id: str) -> str:
+    return project_id
+
+
+def get_project_shell_log_key(project_id: str) -> str:
+    return f"{project_id}{PROJECT_SHELL_LOG_SUFFIX}"
 
 
 def _is_port_available(port: int) -> bool:
@@ -629,14 +638,30 @@ def _wrap_shell_command(command: str) -> str:
     return f"{stripped}\nprintf '{SHELL_COMMAND_DONE_MARKER}%s\\n' \"$?\"\n"
 
 
-def ensure_project_log_storage(project_id: str) -> LogStorage:
-    log_storage = LogStorageFather.get_storage(project_id)
+def ensure_project_runtime_log_storage(project_id: str) -> LogStorage:
+    runtime_log_key = get_project_runtime_log_key(project_id)
+    log_storage = LogStorageFather.get_storage(runtime_log_key)
     if log_storage is not None:
         return log_storage
 
     log_storage = LogStorage(Config.process_log_destroy_seconds)
-    LogStorageFather.add_storage(log_storage, project_id)
+    LogStorageFather.add_storage(log_storage, runtime_log_key)
     return log_storage
+
+
+def ensure_project_shell_log_storage(project_id: str) -> LogStorage:
+    shell_log_key = get_project_shell_log_key(project_id)
+    log_storage = LogStorageFather.get_storage(shell_log_key)
+    if log_storage is not None:
+        return log_storage
+
+    log_storage = LogStorage(Config.process_log_destroy_seconds)
+    LogStorageFather.add_storage(log_storage, shell_log_key)
+    return log_storage
+
+
+def ensure_project_log_storage(project_id: str) -> LogStorage:
+    return ensure_project_runtime_log_storage(project_id)
 
 
 async def stop_project_shell_session(project_id: str) -> bool:
@@ -782,7 +807,7 @@ async def ensure_project_shell_session(
         project_name=project_meta.project_name,
         terminate_duplicate_processes=False,
     )
-    process.log_storage = ensure_project_log_storage(project_meta.project_id)
+    process.log_storage = ensure_project_shell_log_storage(project_meta.project_id)
     await process.start()
     ProjectShellSessionManager.set_session(project_meta.project_id, process)
     bootstrap_script = _build_shell_bootstrap_script(
@@ -844,7 +869,7 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
 
     project_dir = Path(project_meta.project_dir)
     env, _ = build_project_runtime_env(project_meta)
-    log_storage = ensure_project_log_storage(project_meta.project_id)
+    log_storage = ensure_project_runtime_log_storage(project_meta.project_id)
 
     env_file = project_dir / project_meta.use_env
     env_data = dotenv_values(env_file) if env_file.exists() else {}

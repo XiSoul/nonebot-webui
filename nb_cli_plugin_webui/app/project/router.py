@@ -22,6 +22,7 @@ from .service import (
     is_managed_project_dir,
 )
 from ..process.service import stop_project_shell_session
+from ..process.service import get_project_runtime_log_key, get_project_shell_log_key
 from .schemas import (
     AddProjectData,
     GenericResponse,
@@ -89,7 +90,11 @@ async def delete_project(
     except Exception:
         pass
     try:
-        LogStorageFather.remove_storage(data.project_id)
+        LogStorageFather.remove_storage(get_project_runtime_log_key(data.project_id))
+    except Exception:
+        pass
+    try:
+        LogStorageFather.remove_storage(get_project_shell_log_key(data.project_id))
     except Exception:
         pass
 

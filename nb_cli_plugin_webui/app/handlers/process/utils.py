@@ -12,6 +12,9 @@ class ProcessFuncWithLog:
         self.queue: List[
             Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]
         ] = list()
+        self.on_error: List[
+            Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]
+        ] = list()
 
     async def _err_parse(
         self, err: Exception, additional_err_msg: Optional[str] = None
@@ -41,6 +44,15 @@ class ProcessFuncWithLog:
         self.queue.append((func, args, kwargs))
         return self
 
+    def add_on_error(
+        self,
+        func: Callable,
+        *args,
+        **kwargs,
+    ) -> "ProcessFuncWithLog":
+        self.on_error.append((func, args, kwargs))
+        return self
+
     async def _done(self, additional_err_msg: Optional[str]) -> None:
         for func, args, kwargs in self.queue:
             try:
@@ -50,6 +62,16 @@ class ProcessFuncWithLog:
                     await asyncio.to_thread(func, *args, **kwargs)
             except Exception as err:
                 await self._err_parse(err, additional_err_msg)
+                for rollback_func, rollback_args, rollback_kwargs in self.on_error:
+                    try:
+                        if asyncio.iscoroutinefunction(rollback_func):
+                            await rollback_func(*rollback_args, **rollback_kwargs)
+                        else:
+                            await asyncio.to_thread(
+                                rollback_func, *rollback_args, **rollback_kwargs
+                            )
+                    except Exception:
+                        continue
                 break
 
     def done(self, *, additional_err_msg: Optional[str] = None) -> None:

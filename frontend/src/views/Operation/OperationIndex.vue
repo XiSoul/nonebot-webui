@@ -9,7 +9,7 @@ import TerminalItem from '@/views/Operation/TerminalItem.vue'
     <OperationBar />
     <div class="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)]">
       <BotDetails />
-      <TerminalItem />
+      <TerminalItem mode="runtime" />
     </div>
   </div>
 </template>

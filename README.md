@@ -54,6 +54,9 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - 优化已有实例导入，支持相对路径和容器内绝对路径识别
 - 修复坏虚拟环境导致的依赖安装失败，自动备份并重建 `.venv`
 - 补齐导入实例后的驱动 / 依赖初始化流程，减少第三步报错
+- 修复添加实例失败后仍残留实例记录的问题，失败时自动回滚
+- 修复实例列表重复污染问题，避免路径别名与自动扫描把测试实例反复塞回列表
+- 将实例运行日志与维护终端拆分，实例操作页与独立终端页职责分离
 - 调整概览、通知、日志、终端交互，让运维动作更集中
 - 新增关于页，文档入口和项目信息集中展示
 
@@ -74,7 +77,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-推荐优先使用显式版本号，例如 `0.4.2`、`0.4`，后面做升级、回滚、版本检测会更方便。
+推荐优先使用显式版本号，例如 `0.4.5`、`0.4`，后面做升级、回滚、版本检测会更方便。
 
 ### 非 Docker 安装
 
@@ -117,7 +120,8 @@ docker run -d \
 - `/projects` 给 WebUI 新建实例使用
 - `/external-projects` 给宿主机 / NAS 里已经存在的实例使用
 - `/app/config.json` 与 `/app/project.json` 会被程序写回，不能只读挂载
-- 如果 NAS 面板自动带出 `/data` 等默认卷，建议手动删掉，再按上面这些路径重新配置
+- 镜像会默认提示挂载 `/projects` 与 `/external-projects`
+- 如果 NAS 面板自动带出其它旧默认卷（例如 `/data`），建议手动删掉，再按上面这些路径重新配置
 
 ### 路径映射说明
 
@@ -238,12 +242,12 @@ docker logs nonebot-webui
 - `${major}.${minor}`
 - `${version}`
 
-例如版本 `0.4.4` 会自动生成：
+例如版本 `0.4.5` 会自动生成：
 
 - `xisoul/nonebot-webui:latest`
 - `xisoul/nonebot-webui:master`
 - `xisoul/nonebot-webui:0.4`
-- `xisoul/nonebot-webui:0.4.4`
+- `xisoul/nonebot-webui:0.4.5`
 
 ### 推荐发版步骤
 
@@ -251,7 +255,7 @@ docker logs nonebot-webui
 2. 更新 `pyproject.toml` 中的版本号
 3. 同步更新 `Dockerfile` 中的 `APP_VERSION`
 4. 提交代码
-5. 打版本 tag，例如 `v0.4.4`
+5. 打版本 tag，例如 `v0.4.5`
 6. 推送 `master` 和对应 tag
 
 示例：
@@ -261,8 +265,8 @@ git add .
 git commit -m "feat: your change"
 git push origin master
 
-git tag v0.4.4
-git push origin v0.4.4
+git tag v0.4.5
+git push origin v0.4.5
 ```
 
 ### 重要说明

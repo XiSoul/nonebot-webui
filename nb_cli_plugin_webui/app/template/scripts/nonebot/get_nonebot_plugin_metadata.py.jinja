@@ -1,10 +1,12 @@
 {% from "scripts/nonebot/_metadata.py.jinja" import get_plugin_metadata %}
+{% from "scripts/nonebot/_driver.py.jinja" import get_nonebot_driver %}
 
 from dataclasses import asdict
 
+{{ get_nonebot_driver() }}
 {{ get_plugin_metadata(plugin) }}
 
 if metadata:
     data = asdict(metadata)
     data["config"] = dict()
-    print(f"nonebot_plugin_metadata:{json.dumps(data)}")
+    print(f"nonebot_plugin_metadata:{_safe_json_dumps(data)}")

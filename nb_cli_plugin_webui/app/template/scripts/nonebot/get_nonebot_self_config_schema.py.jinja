@@ -2,5 +2,5 @@
 
 {{ get_nonebot_driver() }}
 
-print(f"nonebot_self_config_schema:{json.dumps(_model_json_schema(driver.config))}")
+print(f"nonebot_self_config_schema:{_safe_json_dumps(_model_json_schema(driver.config))}")
 

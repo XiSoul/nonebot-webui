@@ -436,6 +436,22 @@ def _reset_failed_project_dir(project_dir: Path, base_project_dir: Path) -> bool
     return True
 
 
+def _cleanup_project_metadata(project_id: str) -> None:
+    try:
+        manager = NoneBotProjectManager(project_id=project_id)
+        manager.remove_project()
+    except Exception:
+        pass
+
+
+def _cleanup_managed_project_dir(project_dir: Path) -> None:
+    try:
+        if is_managed_project_dir(project_dir):
+            shutil.rmtree(project_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+
 def normalize_project_name(project_name: str) -> str:
     return project_name.strip().replace(" ", "-")
 
@@ -495,9 +511,33 @@ def parse_project_port(value: Any) -> int:
 
 def _get_project_map() -> Dict[str, NoneBotProjectMeta]:
     try:
-        return NoneBotProjectManager.get_project()
+        project_map = NoneBotProjectManager.get_project()
     except Exception:
         return {}
+    return _dedupe_project_map(project_map)
+
+
+def _dedupe_project_map(
+    project_map: Dict[str, NoneBotProjectMeta],
+) -> Dict[str, NoneBotProjectMeta]:
+    deduped: Dict[str, NoneBotProjectMeta] = {}
+    seen_aliases: Dict[str, str] = {}
+
+    for project_id, meta in project_map.items():
+        project_dir = Path(meta.project_dir)
+        aliases = _project_dir_alias_keys(project_dir)
+        duplicate_of = next(
+            (seen_aliases[alias] for alias in aliases if alias in seen_aliases),
+            None,
+        )
+        if duplicate_of is not None:
+            continue
+
+        deduped[project_id] = meta
+        for alias in aliases:
+            seen_aliases[alias] = project_id
+
+    return deduped
 
 
 def ensure_project_name_is_unique(
@@ -517,11 +557,11 @@ def ensure_project_name_is_unique(
 def ensure_project_dir_is_unique(
     project_dir: Path, *, exclude_project_id: Optional[str] = None
 ) -> None:
-    normalized_project_dir = normalize_project_dir(project_dir)
+    normalized_project_dir_aliases = _project_dir_alias_keys(project_dir)
     for current_project_id, meta in _get_project_map().items():
         if current_project_id == exclude_project_id:
             continue
-        if normalize_project_dir(Path(meta.project_dir)) == normalized_project_dir:
+        if _project_dir_alias_keys(Path(meta.project_dir)) & normalized_project_dir_aliases:
             raise ProjectDirectoryAlreadyExists(str(project_dir), meta.project_name)
 
 
@@ -612,6 +652,7 @@ def create_nonebot_project(data: CreateProjectData) -> str:
     log_key = generate_complexity_string(10)
     LogStorageFather.add_storage(log, log_key)
 
+    created_project_id: Dict[str, str] = {"value": ""}
     process = ProcessFuncWithLog(log)
     process.add(asyncio.sleep, 1)
     process.add(log.add_log, CustomLog(message="Processing at 3s..."))
@@ -701,6 +742,7 @@ def create_nonebot_project(data: CreateProjectData) -> str:
         )
 
         project_id = generate_complexity_string(6)
+        created_project_id["value"] = project_id
         manager = NoneBotProjectManager(project_id=project_id)
         env_file = project_dir / ".env"
         if not env_file.exists():
@@ -723,7 +765,21 @@ def create_nonebot_project(data: CreateProjectData) -> str:
         manager.write_to_env(".env", "ENVIRONMENT", "prod")
         return True
 
+    async def rollback_failed_create():
+        project_id = created_project_id["value"].strip()
+        if project_id:
+            _cleanup_project_metadata(project_id)
+        _cleanup_managed_project_dir(project_dir)
+        await log.add_log(
+            CustomLog(
+                level="WARNING",
+                message="创建失败，已自动回滚实例记录与受管目录。",
+            )
+        )
+        return True
+
     process.add(add_project_info)
+    process.add_on_error(rollback_failed_create)
     process.add(log.add_log, CustomLog(message="✨ Done!"))
     process.done()
 
@@ -956,6 +1012,7 @@ async def add_nonebot_project(data: AddProjectData) -> str:
 
     project_id = generate_complexity_string(6)
     manager = NoneBotProjectManager(project_id=project_id)
+    metadata_persisted: Dict[str, bool] = {"value": False}
 
     async def persist_project_metadata():
         await manager.add_project(
@@ -971,6 +1028,7 @@ async def add_nonebot_project(data: AddProjectData) -> str:
             use_env=current_env,
             sync_plugin_config=False,
         )
+        metadata_persisted["value"] = True
         return True
 
     async def sync_project_metadata():
@@ -988,7 +1046,22 @@ async def add_nonebot_project(data: AddProjectData) -> str:
     if not env_path.exists() or not env_path.is_file():
         manager.write_to_env(".env", "ENVIRONMENT", "prod")
 
+    async def rollback_failed_add():
+        if metadata_persisted["value"]:
+            _cleanup_project_metadata(project_id)
+        await log.add_log(
+            CustomLog(
+                level="WARNING",
+                message=(
+                    "添加实例失败，已自动回滚实例记录。"
+                    f" rollback_project_id={project_id}"
+                ),
+            )
+        )
+        return True
+
     process.add(log.add_log, CustomLog(message="✨ Done!"))
+    process.add_on_error(rollback_failed_add)
     process.done()
 
     asyncio.get_event_loop().call_later(600, LogStorageFather.remove_storage, log_key)
@@ -1076,14 +1149,24 @@ def _auto_scan_mounted_projects() -> None:
             if normalized_names & existing_dir_names:
                 continue
 
+            project_detail = _safe_get_project_toml_detail(project_dir)
+            resolved_project_name = normalize_project_name(
+                (project_detail.project_name if project_detail else "") or child_dir.name
+            )
+            if resolved_project_name:
+                try:
+                    ensure_project_name_is_unique(resolved_project_name)
+                except ProjectNameAlreadyExists:
+                    log.info(
+                        "Skip auto-import mounted project because project name already exists: "
+                        f"{project_dir} -> {resolved_project_name}"
+                    )
+                    existing_dirs.update(normalized_aliases)
+                    existing_dir_names.update(normalized_names)
+                    continue
+
             # 自动添加项目
             project_name = child_dir.name
-            # 检查项目名是否重复
-            try:
-                ensure_project_name_is_unique(project_name)
-            except ProjectNameAlreadyExists:
-                # 如果项目名重复，加上后缀
-                project_name = f"{project_name}_{generate_complexity_string(4)}"
 
             # 异步执行添加，不阻塞列表查询
             if _schedule_auto_add_project(project_dir, project_name):
@@ -1095,13 +1178,7 @@ def _auto_scan_mounted_projects() -> None:
 
 
 def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
-    # 自动扫描挂载目录下的项目
-    _auto_scan_mounted_projects()
-
-    try:
-        project = NoneBotProjectManager.get_project()
-    except Exception:
-        project = dict()
+    project = _get_project_map()
 
     if not project:
         return project

@@ -1,11 +1,24 @@
 <script setup lang="ts">
 import { ProcessService, type ProcessLog } from '@/client/api'
 import { getAuthToken } from '@/client/auth'
-import { openProjectTerminal } from '@/client/process'
+import {
+  getProjectRuntimeLogKey,
+  getProjectTerminalLogKey,
+  openProjectTerminal
+} from '@/client/process'
 import { generateURLForWebUI, getErrorMessage } from '@/client/utils'
 import { useCustomStore, useNoneBotStore, useToastStore } from '@/stores'
 import { useWebSocket } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+
+const props = withDefaults(
+  defineProps<{
+    mode?: 'runtime' | 'shell'
+  }>(),
+  {
+    mode: 'shell'
+  }
+)
 
 type DownloadProgressSnapshot = {
   label: string
@@ -29,6 +42,33 @@ const PROCESS_FINISHED_MESSAGE = 'Process finished.'
 const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
 const PROCESS_NOT_FOUND_ERROR = 'Process not found.'
 let currentTimeTimer: ReturnType<typeof setInterval> | null = null
+const currentLogKey = ref('')
+
+const resolveLogKey = async (projectId?: string) => {
+  const id = projectId ?? store.selectedBot?.project_id
+  if (!id) {
+    currentLogKey.value = ''
+    return ''
+  }
+
+  if (props.mode === 'runtime') {
+    const { data, error } = await getProjectRuntimeLogKey(id)
+    if (error || !data?.detail) {
+      currentLogKey.value = id
+      return currentLogKey.value
+    }
+    currentLogKey.value = data.detail
+    return data.detail
+  }
+
+  const { data, error } = await getProjectTerminalLogKey(id)
+  if (error || !data?.detail) {
+    currentLogKey.value = `${id}:shell`
+    return currentLogKey.value
+  }
+  currentLogKey.value = data.detail
+  return data.detail
+}
 
 const parseSizeToBytes = (size: number, unit: string) => {
   const normalizedUnit = unit.trim().toUpperCase()
@@ -155,14 +195,14 @@ const fillCommand = (value: string) => {
 }
 
 const subscribeLog = (projectId?: string) => {
-  const logKey = projectId ?? store.selectedBot?.project_id
+  const logKey = projectId ?? currentLogKey.value
   if (!logKey) return
   send(JSON.stringify({ type: 'log', log_key: logKey }))
   currentBot.value = logKey
 }
 
 const getHistoryLogs = async (projectId?: string) => {
-  const logId = projectId ?? store.selectedBot?.project_id
+  const logId = projectId ?? currentLogKey.value
   if (!logId) return
 
   const getLogCount = 200
@@ -178,7 +218,7 @@ const getHistoryLogs = async (projectId?: string) => {
       typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail ?? '')
 
     if (errorDetail === MISSING_LOG_STORAGE_ERROR) {
-      if (store.selectedBot?.project_id === logId) {
+      if (currentLogKey.value === logId) {
         logData.value = []
       }
       return
@@ -188,7 +228,7 @@ const getHistoryLogs = async (projectId?: string) => {
   }
 
   if (data) {
-    if (store.selectedBot?.project_id !== logId) return
+    if (currentLogKey.value !== logId) return
     logData.value = data.detail
     await scrollToBottom()
   }
@@ -200,6 +240,7 @@ const syncSelectedBotStatus = async () => {
 }
 
 const ensureStoppedProjectTerminal = async (projectId?: string) => {
+  if (props.mode !== 'shell') return true
   const id = projectId ?? store.selectedBot?.project_id
   if (!id) return false
 
@@ -217,6 +258,7 @@ const isProcessUnavailableError = (error: unknown) => {
 }
 
 const writeToProcess = async (content: string, displayEcho?: string) => {
+  if (props.mode !== 'shell') return false
   if (!store.selectedBot) return
   if (!store.selectedBot.is_running) {
     const ready = await ensureStoppedProjectTerminal(store.selectedBot.project_id)
@@ -268,6 +310,7 @@ const writeToProcess = async (content: string, displayEcho?: string) => {
 }
 
 const sendCommand = async () => {
+  if (props.mode !== 'shell') return
   const command = commandInput.value.trim()
   if (!command) return
 
@@ -286,6 +329,7 @@ const sendCommand = async () => {
 }
 
 const sendInterrupt = async () => {
+  if (props.mode !== 'shell') return
   if (!store.selectedBot) return
 
   commandSending.value = true
@@ -331,19 +375,29 @@ const { status, data, close, open, send } = useWebSocket<ProcessLog>(
 )
 
 const canWriteCommand = computed(
-  () => Boolean(store.selectedBot) && (!store.selectedBot?.is_running || status.value === 'OPEN') && !commandSending.value
+  () =>
+    props.mode === 'shell' &&
+    Boolean(store.selectedBot) &&
+    (!store.selectedBot?.is_running || status.value === 'OPEN') &&
+    !commandSending.value
 )
 const canInterrupt = computed(
-  () => Boolean(store.selectedBot) && (!store.selectedBot?.is_running || status.value === 'OPEN') && !commandSending.value
+  () =>
+    props.mode === 'shell' &&
+    Boolean(store.selectedBot) &&
+    (!store.selectedBot?.is_running || status.value === 'OPEN') &&
+    !commandSending.value
 )
 const terminalModeLabel = computed(() => {
   if (!store.selectedBot) return '未选择实例'
+  if (props.mode === 'runtime') return '实例运行日志'
   if (store.selectedBot.is_running) {
     return status.value === 'OPEN' ? '并行 Shell' : '等待重连'
   }
   return 'Shell 会话'
 })
 const commandPlaceholder = computed(() => {
+  if (props.mode !== 'shell') return '当前页面仅展示实例运行日志'
   if (!store.selectedBot) return '请先选择实例'
   if (store.selectedBot.is_running) {
     if (status.value === 'OPEN') return '输入命令，例如 pip install、playwright install、nb run'
@@ -395,8 +449,9 @@ onMounted(async () => {
   }, 1000)
 
   if (!store.selectedBot) return
-  await getHistoryLogs(store.selectedBot.project_id)
-  if (!store.selectedBot.is_running) {
+  const logKey = await resolveLogKey(store.selectedBot.project_id)
+  await getHistoryLogs(logKey)
+  if (props.mode === 'shell' && !store.selectedBot.is_running) {
     await ensureStoppedProjectTerminal(store.selectedBot.project_id)
   }
   open()
@@ -435,19 +490,21 @@ watch(
 
 watch(
   () => store.selectedBot?.project_id,
-  async (projectId, previousProjectId) => {
+  async (projectId) => {
     if (!projectId) {
+      currentLogKey.value = ''
       currentBot.value = ''
       logData.value = []
       close()
       return
     }
 
-    if (projectId !== previousProjectId) {
-      currentBot.value = projectId
+    const nextLogKey = await resolveLogKey(projectId)
+    if (nextLogKey !== currentBot.value) {
+      currentBot.value = nextLogKey
       logData.value = []
-      await getHistoryLogs(projectId)
-      if (!store.selectedBot?.is_running) {
+      await getHistoryLogs(nextLogKey)
+      if (props.mode === 'shell' && !store.selectedBot?.is_running) {
         await ensureStoppedProjectTerminal(projectId)
       }
     }
@@ -455,8 +512,8 @@ watch(
     if (status.value !== 'OPEN') {
       open()
     } else {
-      subscribeLog(projectId)
-      await getHistoryLogs(projectId)
+      subscribeLog(nextLogKey)
+      await getHistoryLogs(nextLogKey)
     }
   }
 )
@@ -466,21 +523,30 @@ watch(
   async (isRunning) => {
     const projectId = store.selectedBot?.project_id
     if (!projectId) return
+    const logKey = await resolveLogKey(projectId)
+
+    if (props.mode === 'runtime') {
+      if (status.value === 'OPEN') {
+        subscribeLog(logKey)
+        await getHistoryLogs(logKey)
+      }
+      return
+    }
 
     if (isRunning) {
-      await getHistoryLogs(projectId)
+      await getHistoryLogs(logKey)
       if (status.value !== 'OPEN') {
         open()
       } else {
-        subscribeLog(projectId)
+        subscribeLog(logKey)
       }
       return
     }
 
     await ensureStoppedProjectTerminal(projectId)
     if (status.value === 'OPEN') {
-      subscribeLog(projectId)
-      await getHistoryLogs(projectId)
+      subscribeLog(logKey)
+      await getHistoryLogs(logKey)
     }
   }
 )
@@ -529,7 +595,11 @@ const retry = () => {
           </div>
 
           <p class="max-w-3xl text-sm leading-6 text-base-content/68">
-            停止状态下这里会维护一个常驻 Shell；运行中的实例则会额外保留并行 Shell，方便你执行依赖修复、代理排查和浏览器安装。
+            {{
+              props.mode === 'runtime'
+                ? '这里只展示实例运行过程中的输出和状态变化，适合观察启动、停止、报错和插件运行日志。'
+                : '停止状态下这里会维护一个常驻 Shell；运行中的实例则会额外保留并行 Shell，方便你执行依赖修复、代理排查和浏览器安装。'
+            }}
           </p>
         </div>
 
@@ -655,7 +725,11 @@ const retry = () => {
         </div>
       </div>
 
-      <form class="flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 backdrop-blur" @submit.prevent="sendCommand">
+      <form
+        v-if="props.mode === 'shell'"
+        class="flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 backdrop-blur"
+        @submit.prevent="sendCommand"
+      >
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">常用命令</span>
           <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('python -m pip install -U ')">
@@ -693,6 +767,17 @@ const retry = () => {
           </div>
         </div>
       </form>
+
+      <div
+        v-else
+        class="rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 text-sm leading-6 text-base-content/70 backdrop-blur"
+      >
+        维护命令、手动安装依赖和
+        <span class="font-mono">playwright install</span>
+        等操作已移动到左侧菜单中的独立
+        <span class="font-semibold">终端</span>
+        页面，避免与实例运行日志混在一起。
+      </div>
     </div>
   </section>
 </template>

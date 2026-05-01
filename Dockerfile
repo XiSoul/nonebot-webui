@@ -1,4 +1,4 @@
-ARG APP_VERSION=0.4.4
+ARG APP_VERSION=0.4.5
 ARG VCS_REF=
 ARG PYTHON_IMAGE=3.11
 ARG VARIANT=
@@ -22,7 +22,7 @@ RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
-ARG APP_VERSION=0.4.4
+ARG APP_VERSION=0.4.5
 ARG VCS_REF=unknown
 ARG PIP_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL
@@ -51,10 +51,12 @@ RUN pip install --no-deps .
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 
-ARG APP_VERSION=0.4.4
+ARG APP_VERSION=0.4.5
 ARG VCS_REF=unknown
 ARG APT_MIRROR
 EXPOSE 18080
+VOLUME ["/projects"]
+VOLUME ["/external-projects"]
 
 # 创建挂载目录
 RUN mkdir -p /opt/nonebot-projects && chmod 777 /opt/nonebot-projects
