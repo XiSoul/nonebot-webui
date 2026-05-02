@@ -4,6 +4,7 @@ import socket
 import asyncio
 import shlex
 import json
+import time
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -48,6 +49,7 @@ HTMLRENDER_INSTALL_TASKS: Dict[str, asyncio.Task] = dict()
 PROCESS_START_STABILITY_SECONDS = 2.0
 PROJECT_READY_TIMEOUT_SECONDS = 90.0
 PROJECT_SHELL_LOG_SUFFIX = ":shell"
+PLAYWRIGHT_DIRLOCK_STALE_SECONDS = 5 * 60
 
 
 class ProjectShellSessionManager:
@@ -179,6 +181,46 @@ def _default_nonebot2_data_dir(env: dict) -> Path:
     if data_home:
         return Path(data_home) / "nonebot2"
     return home_dir / ".local" / "share" / "nonebot2"
+
+
+def _clear_stale_htmlrender_dirlock(env: dict, log_storage: Optional[LogStorage] = None) -> None:
+    lock_path = (
+        _default_nonebot2_data_dir(env)
+        / "nonebot_plugin_htmlrender"
+        / "__dirlock"
+    )
+    if not lock_path.exists():
+        return
+
+    try:
+        age_seconds = max(0.0, time.time() - lock_path.stat().st_mtime)
+    except OSError:
+        age_seconds = PLAYWRIGHT_DIRLOCK_STALE_SECONDS + 1
+
+    if age_seconds < PLAYWRIGHT_DIRLOCK_STALE_SECONDS:
+        return
+
+    try:
+        if lock_path.is_dir():
+            import shutil
+
+            shutil.rmtree(lock_path, ignore_errors=True)
+        else:
+            lock_path.unlink(missing_ok=True)
+        if log_storage is not None:
+            asyncio.create_task(
+                log_storage.add_log(
+                    CustomLog(
+                        level="WARNING",
+                        message=(
+                            "检测到遗留的 Playwright 安装锁文件，已自动清理："
+                            f" {lock_path}"
+                        ),
+                    )
+                )
+            )
+    except Exception:
+        pass
 
 
 def _apply_htmlrender_browser_path(env: dict, project_meta, project_dir: Path) -> None:
@@ -445,6 +487,8 @@ async def _ensure_htmlrender_browser_ready(
     project_dir = Path(project_meta.project_dir)
     if not _project_mentions_htmlrender(project_meta, project_dir):
         return
+
+    _clear_stale_htmlrender_dirlock(env, log_storage=log_storage)
 
     try:
         browser_exists, executable_path = await _detect_playwright_chromium_executable(

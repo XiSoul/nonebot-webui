@@ -41,8 +41,34 @@ const MISSING_LOG_STORAGE_ERROR = 'Log storage not found.'
 const PROCESS_FINISHED_MESSAGE = 'Process finished.'
 const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
 const PROCESS_NOT_FOUND_ERROR = 'Process not found.'
+const LOG_CACHE_PREFIX = 'terminalLogCache:'
 let currentTimeTimer: ReturnType<typeof setInterval> | null = null
 const currentLogKey = ref('')
+
+const getLogCacheKey = (logKey: string) => `${LOG_CACHE_PREFIX}${props.mode}:${logKey}`
+
+const saveLogCache = (logKey: string) => {
+  if (!logKey) return
+  try {
+    localStorage.setItem(getLogCacheKey(logKey), JSON.stringify(logData.value.slice(-200)))
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const restoreLogCache = (logKey: string) => {
+  if (!logKey) return false
+  try {
+    const raw = localStorage.getItem(getLogCacheKey(logKey))
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return false
+    logData.value = parsed
+    return true
+  } catch {
+    return false
+  }
+}
 
 const resolveLogKey = async (projectId?: string) => {
   const id = projectId ?? store.selectedBot?.project_id
@@ -187,6 +213,7 @@ const scrollToBottom = async () => {
 
 const appendLocalLog = async (message: string) => {
   logData.value.push({ message })
+  saveLogCache(currentLogKey.value)
   await scrollToBottom()
 }
 
@@ -230,6 +257,7 @@ const getHistoryLogs = async (projectId?: string) => {
   if (data) {
     if (currentLogKey.value !== logId) return
     logData.value = data.detail
+    saveLogCache(logId)
     await scrollToBottom()
   }
 }
@@ -450,6 +478,7 @@ onMounted(async () => {
 
   if (!store.selectedBot) return
   const logKey = await resolveLogKey(store.selectedBot.project_id)
+  restoreLogCache(logKey)
   await getHistoryLogs(logKey)
   if (props.mode === 'shell' && !store.selectedBot.is_running) {
     await ensureStoppedProjectTerminal(store.selectedBot.project_id)
@@ -472,6 +501,7 @@ watch(
 
     const parsedData: ProcessLog = JSON.parse(rawData.toString())
     logData.value.push(parsedData)
+    saveLogCache(currentLogKey.value)
     if (parsedData.message === PROCESS_FINISHED_MESSAGE) {
       await syncSelectedBotStatus()
     }
