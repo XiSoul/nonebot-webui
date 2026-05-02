@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useNoneBotStore } from '@/stores'
+import { getRuntimeState } from '@/utils/runtimeState'
 import CreateBotIndex from '@/components/Modals/CreateBot/CreateBotIndex.vue'
 import MachineStat from '@/views/Dashboard/MachineStat.vue'
 import AddBotIndex from '@/components/Modals/AddBot/AddBotIndex.vue'
@@ -12,7 +13,7 @@ const createBotModal = ref<InstanceType<typeof CreateBotIndex> | null>()
 const addBotModal = ref<InstanceType<typeof AddBotIndex> | null>()
 
 const getBotIsRunning = computed(() => {
-  return store.getExtendedBotsList().filter((bot) => bot.is_running).length
+  return store.getExtendedBotsList().filter((bot) => getRuntimeState(bot) === 'running').length
 })
 
 const selectedBot = computed(() => store.selectedBot)
@@ -72,9 +73,21 @@ const { messageCount: selectedBotMessageCount } = useInstanceMessageCount(select
               </div>
               <span
                 class="badge badge-lg min-h-10 min-w-[5.5rem] px-4 text-sm font-semibold whitespace-nowrap inline-flex items-center justify-center"
-                :class="selectedBot?.is_running ? 'badge-success text-base-100' : 'badge-ghost'"
+                :class="
+                  getRuntimeState(selectedBot) === 'running'
+                    ? 'badge-success text-base-100'
+                    : getRuntimeState(selectedBot) === 'starting'
+                      ? 'badge-warning'
+                      : 'badge-ghost'
+                "
               >
-                {{ selectedBot?.is_running ? '运行中' : '未运行' }}
+                {{
+                  getRuntimeState(selectedBot) === 'running'
+                    ? '运行中'
+                    : getRuntimeState(selectedBot) === 'starting'
+                      ? '启动中'
+                      : '未运行'
+                }}
               </span>
             </div>
 

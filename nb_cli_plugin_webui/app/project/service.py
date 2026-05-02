@@ -1178,6 +1178,8 @@ def _auto_scan_mounted_projects() -> None:
 
 
 def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
+    from nb_cli_plugin_webui.app.process.router import is_project_starting
+
     project = _get_project_map()
 
     if not project:
@@ -1196,16 +1198,22 @@ def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
             continue
 
         is_running = False
-        for process_id in processes:
-            process = processes.get(process_id)
-            if process is None:
-                continue
-
-            if _project.project_id == process_id and process.refresh_runtime_state():
-                is_running = True
-                break
+        runtime_state = "stopped"
+        process = processes.get(project_id)
+        if process is not None and getattr(process, "process", None) is not None:
+            process.refresh_runtime_state()
+            runtime_state = getattr(process, "runtime_state", "starting")
+            is_running = runtime_state == "running"
 
         _project.is_running = is_running
+        _project.runtime_state = runtime_state
+        _project.startup_duration_seconds = (
+            getattr(_project, "startup_duration_seconds", 0.0)
+            if runtime_state == "running"
+            else 0.0
+        )
+        if runtime_state == "stopped" and is_project_starting(project_id):
+            _project.runtime_state = "starting"
         result[project_id] = _project
 
     return result

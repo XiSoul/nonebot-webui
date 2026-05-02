@@ -1,12 +1,14 @@
 from typing import Dict, List, Callable, Optional, Awaitable
 
 from fastapi.websockets import WebSocketState
+import asyncio
 from fastapi import Depends, APIRouter, WebSocket, HTTPException, status
 
 from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.logging import logger
 from nb_cli_plugin_webui.app.schemas import GenericResponse
 from nb_cli_plugin_webui.app.auth.utils import websocket_auth
+from nb_cli_plugin_webui.app.handlers.process.schemas import CustomLog
 from nb_cli_plugin_webui.app.project import (
     NoneBotProjectManager,
     get_nonebot_project_manager,
@@ -33,6 +35,12 @@ from .exceptions import DriverNotFound, AdapterNotFound
 
 router = APIRouter(tags=["process"])
 log_listeners: Dict[WebSocket, Callable[[ProcessLog], Awaitable[None]]] = dict()
+project_run_tasks: Dict[str, asyncio.Task] = {}
+
+
+def is_project_starting(project_id: str) -> bool:
+    task = project_run_tasks.get(project_id)
+    return bool(task and not task.done())
 
 
 @router.post("/run", response_model=GenericResponse[str])
@@ -48,16 +56,40 @@ async def run_process(
     if not project_meta.drivers:
         raise DriverNotFound()
 
-    try:
-        await run_nonebot_project(project)
-    except HTTPException:
-        raise
-    except Exception as err:
-        logger.exception(f"Failed to start project {project_meta.project_id}.")
+    running_task = project_run_tasks.get(project_meta.project_id)
+    if running_task and not running_task.done():
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(err) or err.__class__.__name__,
-        ) from err
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project is already starting.",
+        )
+
+    log_storage = ensure_project_runtime_log_storage(project_meta.project_id)
+    log_storage.logs.clear()
+
+    async def _run_in_background() -> None:
+        try:
+            await run_nonebot_project(project)
+        except asyncio.CancelledError:
+            await log_storage.add_log(
+                CustomLog(level="WARNING", message="实例启动已取消。")
+            )
+            raise
+        except HTTPException as err:
+            logger.warning(
+                f"Background start rejected for project {project_meta.project_id}: {err.detail}"
+            )
+            await log_storage.add_log(
+                CustomLog(level="ERROR", message=f"实例启动失败：{err.detail}")
+            )
+        except Exception:
+            logger.exception(f"Failed to start project {project_meta.project_id}.")
+            await log_storage.add_log(
+                CustomLog(level="ERROR", message="实例启动失败，请查看最近日志定位原因。")
+            )
+        finally:
+            project_run_tasks.pop(project_meta.project_id, None)
+
+    project_run_tasks[project_meta.project_id] = asyncio.create_task(_run_in_background())
     return GenericResponse(detail="success")
 
 
@@ -70,8 +102,18 @@ async def _stop_process(
     """
     process = await get_active_terminal_process(project, create_shell=False)
     if process is None:
+        pending_task = project_run_tasks.get(project.project_id)
+        if pending_task and not pending_task.done():
+            pending_task.cancel()
+            project_run_tasks.pop(project.project_id, None)
+            log_storage = ensure_project_runtime_log_storage(project.project_id)
+            await log_storage.add_log(
+                CustomLog(level="WARNING", message="已取消尚未完成的实例启动任务。")
+            )
+            return GenericResponse(detail="success")
         raise ProcessNotRunning()
     await process.stop()
+    project_run_tasks.pop(project.project_id, None)
     return GenericResponse(detail="success")
 
 

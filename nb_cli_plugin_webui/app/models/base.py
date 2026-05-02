@@ -78,6 +78,8 @@ class NoneBotProjectMeta(BaseModel, Generic[_T]):
     builtin_plugins: List[str]
 
     is_running: bool = False
+    runtime_state: str = "stopped"
+    startup_duration_seconds: float = 0.0
 
     use_env: str = ".env"
     use_run_script: bool = False

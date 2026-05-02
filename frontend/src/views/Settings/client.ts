@@ -8,6 +8,7 @@ import {
 } from '@/client/api'
 import { getErrorMessage } from '@/client/utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
+import { isRuntimeActive } from '@/utils/runtimeState'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -27,7 +28,7 @@ export const updateConfig = async (
     return
   }
 
-  const wasRunning = Boolean(store.selectedBot.is_running)
+  const wasRunning = isRuntimeActive(store.selectedBot)
 
   const { data, error } = await ProjectService.updateProjectConfigV1ProjectConfigUpdatePost({
     query: {

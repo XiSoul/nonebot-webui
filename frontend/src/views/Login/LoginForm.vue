@@ -7,6 +7,13 @@ import { getErrorMessage } from '@/client/utils'
 import router from '@/router'
 import { useNoneBotStore, useToastStore } from '@/stores'
 
+type ClientRequest = Parameters<typeof client.interceptors.request.use>[0] extends (
+  request: infer T,
+  ...args: any[]
+) => any
+  ? T
+  : Request
+
 const toast = useToastStore()
 const nonebotStore = useNoneBotStore()
 
@@ -45,7 +52,7 @@ const login = async () => {
 
   if (data?.detail) {
     setAuthToken(data.detail)
-    client.interceptors.request.use((request) => {
+    client.interceptors.request.use((request: ClientRequest) => {
       request.headers.set('Authorization', `Bearer ${data.detail}`)
       return request
     })

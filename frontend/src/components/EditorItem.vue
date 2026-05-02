@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { editor as monacoEditor } from 'monaco-editor/esm/vs/editor/editor.api.js'
+import { ensureMonacoWorker } from '@/client/useMonacoWorker'
 import { onMounted, ref, watch } from 'vue'
+import type { editor as MonacoEditorNamespace } from 'monaco-editor/esm/vs/editor/editor.api.js'
 
 const props = defineProps<{
   modelValue: string
-  editorOptional: Partial<monacoEditor.IStandaloneEditorConstructionOptions>
+  editorOptional: Partial<MonacoEditorNamespace.IStandaloneEditorConstructionOptions>
 }>()
 
 const emit = defineEmits<{
-  editor: [value: monacoEditor.IStandaloneCodeEditor]
+  editor: [value: MonacoEditorNamespace.IStandaloneCodeEditor]
   updateValue: [value: string]
 }>()
 
 const editorContainer = ref<HTMLDivElement>()
-let editor: monacoEditor.IStandaloneCodeEditor
+let editor: MonacoEditorNamespace.IStandaloneCodeEditor
 
-onMounted(() => {
+onMounted(async () => {
+  await ensureMonacoWorker()
+  const { editor: monacoEditor } = await import('monaco-editor/esm/vs/editor/editor.api.js')
+
   editor = monacoEditor.create(editorContainer.value!, {
     value: props.modelValue,
     ...props.editorOptional

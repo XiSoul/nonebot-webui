@@ -7,7 +7,13 @@ import { clearAuthToken, getAuthToken } from './auth'
 import { getErrorMessage } from './utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import App from '@/App.vue'
-import './useMonacoWorker'
+
+type ClientRequest = Parameters<typeof client.interceptors.request.use>[0] extends (
+  request: infer T,
+  ...args: any[]
+) => any
+  ? T
+  : Request
 
 const installVuePlugins = (app: VueAPP) => {
   app.use(createPinia())
@@ -34,7 +40,7 @@ export const initWebUI = async () => {
     return
   }
 
-  client.interceptors.request.use((request) => {
+  client.interceptors.request.use((request: ClientRequest) => {
     request.headers.set('Authorization', `Bearer ${getAuthToken()}`)
     return request
   })

@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { getAuthToken } from '@/client/auth'
 import { generateURLForWebUI } from '@/client/utils'
 import type { NoneBotProjectMeta, ProcessLog } from '@/client/api'
+import { getRuntimeState } from '@/utils/runtimeState'
 
 const INSTANCE_MESSAGE_PATTERNS = [
   /"post_type"\s*:\s*"message"/i,
@@ -53,7 +54,7 @@ export const useInstanceMessageCount = (
 
   const syncMessageCount = async () => {
     const projectId = selectedBot.value?.project_id || ''
-    if (!projectId || !selectedBot.value?.is_running) {
+    if (!projectId || getRuntimeState(selectedBot.value) !== 'running') {
       messageCount.value = 0
       return
     }
@@ -77,7 +78,7 @@ export const useInstanceMessageCount = (
     clearMessagePollTimer()
     void syncMessageCount()
 
-    if (!selectedBot.value?.project_id || !selectedBot.value?.is_running) {
+    if (!selectedBot.value?.project_id || getRuntimeState(selectedBot.value) !== 'running') {
       return
     }
 
@@ -95,7 +96,7 @@ export const useInstanceMessageCount = (
   })
 
   watch(
-    computed(() => `${selectedBot.value?.project_id ?? ''}:${selectedBot.value?.is_running ? '1' : '0'}`),
+    computed(() => `${selectedBot.value?.project_id ?? ''}:${getRuntimeState(selectedBot.value)}`),
     () => {
       restartMessagePolling()
     }

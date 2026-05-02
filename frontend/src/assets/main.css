@@ -1,4 +1,4 @@
-@import 'material-symbols';
+@import 'material-symbols/outlined.css';
 
 @tailwind base;
 @tailwind components;

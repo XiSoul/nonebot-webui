@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import type { NoneBotProjectMeta } from '@/client/api'
 import { useNoneBotStore } from '@/stores'
+import { getRuntimeState } from '@/utils/runtimeState'
 import AddBotIndex from '@/components/Modals/AddBot/AddBotIndex.vue'
 import CreateBotIndex from '@/components/Modals/CreateBot/CreateBotIndex.vue'
 
@@ -85,7 +86,24 @@ onMounted(async () => {
             >
               当前选择
             </span>
-            <span v-if="bot.is_running" class="badge badge-success text-base-100">运行中</span>
+            <span
+              class="badge"
+              :class="
+                getRuntimeState(bot) === 'running'
+                  ? 'badge-success text-base-100'
+                  : getRuntimeState(bot) === 'starting'
+                    ? 'badge-warning'
+                    : 'badge-ghost'
+              "
+            >
+              {{
+                getRuntimeState(bot) === 'running'
+                  ? '运行中'
+                  : getRuntimeState(bot) === 'starting'
+                    ? '启动中'
+                    : '未运行'
+              }}
+            </span>
           </div>
         </div>
       </div>

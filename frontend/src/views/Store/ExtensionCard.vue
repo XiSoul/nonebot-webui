@@ -14,6 +14,7 @@ import {
 } from '@/client/api'
 import { getErrorMessage } from '@/client/utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
+import { isRuntimeActive } from '@/utils/runtimeState'
 import type { PypiInfo } from '@/views/Store/types'
 import { useFetch } from '@vueuse/core'
 import { computed, ref } from 'vue'
@@ -36,7 +37,7 @@ const logViewModal = ref<InstanceType<typeof LogView> | null>()
 const installLogKey = ref('')
 const installShouldRestart = ref(false)
 
-const isModuleActionLocked = computed(() => Boolean(nonebotStore.selectedBot?.is_running))
+const isModuleActionLocked = computed(() => isRuntimeActive(nonebotStore.selectedBot))
 
 const ensureBotSelected = () => {
   if (!nonebotStore.selectedBot) {
@@ -66,7 +67,7 @@ const isTestPassed = (data: T): boolean => {
 const installModule = async (module: T) => {
   if (!ensureBotSelected() || !nonebotStore.selectedBot) return
 
-  installShouldRestart.value = Boolean(nonebotStore.selectedBot.is_running)
+  installShouldRestart.value = isRuntimeActive(nonebotStore.selectedBot)
 
   const moduleType = 'valid' in module ? 'plugin' : 'module'
   const { data, error } = await StoreService.installNonebotModuleV1StoreNonebotInstallPost({
@@ -96,7 +97,7 @@ const installModule = async (module: T) => {
 
 const uninstallModule = async (module: T) => {
   if (!ensureBotSelected() || !nonebotStore.selectedBot) return
-  if (nonebotStore.selectedBot.is_running) {
+  if (isRuntimeActive(nonebotStore.selectedBot)) {
     toast.add('warning', '实例运行中时暂不支持卸载，请先停止实例', '', 5000)
     return
   }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { ProcessService, ProjectService } from '@/client/api'
 import { getErrorMessage, sleep } from '@/client/utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
+import { getRuntimeState, type RuntimeState } from '@/utils/runtimeState'
 
 const store = useNoneBotStore()
 const toast = useToastStore()
@@ -12,28 +13,46 @@ const operating = ref(false)
 const deleting = ref(false)
 const deleteCountdown = ref(0)
 let deleteCountdownTimer: ReturnType<typeof setInterval> | null = null
+const pendingRuntimeState = ref<RuntimeState | ''>('')
+
+const runtimeState = computed<RuntimeState>(() => pendingRuntimeState.value || getRuntimeState(selectedBot.value))
+const isStopped = computed(() => runtimeState.value === 'stopped')
+const isStarting = computed(() => runtimeState.value === 'starting')
+const isRunning = computed(() => runtimeState.value === 'running')
 
 const hasBot = computed(() => Boolean(store.selectedBot))
 const selectedBot = computed(() => store.selectedBot)
 const canDelete = computed(
   () =>
     hasBot.value &&
-    !store.selectedBot?.is_running &&
+    isStopped.value &&
     !operating.value &&
     !deleting.value
 )
 const canConfirmDelete = computed(() => deleteCountdown.value <= 0 && !deleting.value && !operating.value)
-const statusLabel = computed(() => (selectedBot.value?.is_running ? '运行中' : '未运行'))
+const statusLabel = computed(() => {
+  if (isRunning.value) return '运行中'
+  if (isStarting.value) return '启动中'
+  return '未运行'
+})
 const statusClass = computed(() =>
-  selectedBot.value?.is_running
+  isRunning.value
     ? 'badge-success text-base-100'
-    : 'badge-error text-base-100'
+    : isStarting.value
+      ? 'badge-warning'
+      : 'badge-error text-base-100'
 )
+const startupDurationLabel = computed(() => {
+  const seconds = Number(selectedBot.value?.startup_duration_seconds ?? 0)
+  if (!isRunning.value || !Number.isFinite(seconds) || seconds <= 0) return ''
+  return `本次启动 ${seconds >= 10 ? seconds.toFixed(0) : seconds.toFixed(1)}s`
+})
 const actionSummary = computed(() => {
   if (!selectedBot.value) return '请选择一个实例后再执行启动、停止、重启或删除操作。'
-  if (operating.value) return '正在与后端同步实例状态，请稍候。'
   if (deleting.value) return '正在删除实例记录，请不要关闭当前页面。'
-  if (selectedBot.value.is_running) return '实例正在运行，可在右侧 Shell 中继续执行维护命令。'
+  if (isStarting.value) return '实例正在启动或初始化依赖，此时可以点击停止，避免卡死在启动流程。'
+  if (operating.value) return '正在与后端同步实例状态，请稍候。'
+  if (isRunning.value) return '实例正在运行，可在右侧 Shell 中继续执行维护命令。'
   return '实例当前未运行，可先在这里启动，也可以直接进入下方常驻 Shell 做依赖排查。'
 })
 const actionButtons = computed(() => [
@@ -42,7 +61,7 @@ const actionButtons = computed(() => [
     label: '启动',
     desc: '按当前环境变量启动实例',
     variant: 'btn-primary text-base-100',
-    disabled: Boolean(selectedBot.value?.is_running) || operating.value || deleting.value,
+    disabled: !isStopped.value || operating.value || deleting.value,
     action: runBot
   },
   {
@@ -50,15 +69,15 @@ const actionButtons = computed(() => [
     label: '停止',
     desc: '终止当前实例进程',
     variant: 'btn-ghost',
-    disabled: !selectedBot.value?.is_running || operating.value || deleting.value,
+    disabled: (isStopped.value && !isStarting.value) || deleting.value,
     action: stopBot
   },
   {
     key: 'restart',
     label: '重启',
-    desc: '停止后重新启动实例',
+    desc: isStopped.value ? '当前未运行时执行重新启动' : '终止当前实例后重新启动',
     variant: 'btn-ghost',
-    disabled: !selectedBot.value?.is_running || operating.value || deleting.value,
+    disabled: !hasBot.value || deleting.value || isStarting.value,
     action: restartBot
   },
   {
@@ -78,6 +97,20 @@ const clearDeleteCountdown = () => {
   }
 }
 
+const markStarting = (projectId: string) => {
+  pendingRuntimeState.value = 'starting'
+}
+
+const syncRuntimeState = async () => {
+  await store.loadBots()
+  if (pendingRuntimeState.value && store.selectedBot) {
+    const nextState = getRuntimeState(store.selectedBot)
+    if (nextState !== pendingRuntimeState.value || nextState === 'stopped') {
+      pendingRuntimeState.value = ''
+    }
+  }
+}
+
 const openDeleteConfirm = () => {
   if (!canDelete.value) return
   clearDeleteCountdown()
@@ -92,29 +125,24 @@ const openDeleteConfirm = () => {
   deleteConfirmModal.value?.showModal()
 }
 
-const reloadAndSyncSelection = async () => {
-  await store.loadBots()
-  if (!store.selectedBot && Object.values(store.bots).length) {
-    store.selectBot(Object.values(store.bots)[0])
-  }
-}
-
 const runBot = async () => {
   if (!store.selectedBot || operating.value || deleting.value) return
   operating.value = true
 
   const projectId = store.selectedBot.project_id
   const projectName = store.selectedBot.project_name
+  markStarting(projectId)
   const { data, error } = await ProcessService.runProcessV1ProcessRunPost({
     query: { project_id: projectId }
   })
 
   if (error) {
+    pendingRuntimeState.value = ''
     toast.add('error', `启动失败，原因：${getErrorMessage(error)}`, '', 5000)
   }
   if (data) {
-    await reloadAndSyncSelection()
-    toast.add('success', `${projectName} 已启动`, '', 3000)
+    await syncRuntimeState()
+    toast.add('success', `${projectName} 已进入启动流程`, '', 3000)
   }
 
   operating.value = false
@@ -126,15 +154,17 @@ const stopBot = async () => {
 
   const projectId = store.selectedBot.project_id
   const projectName = store.selectedBot.project_name
+  pendingRuntimeState.value = 'stopped'
   const { data, error } = await ProcessService.stopProcessV1ProcessStopPost({
     query: { project_id: projectId }
   })
 
   if (error) {
+    pendingRuntimeState.value = ''
     toast.add('error', `停止失败，原因：${getErrorMessage(error)}`, '', 5000)
   }
   if (data) {
-    await reloadAndSyncSelection()
+    await syncRuntimeState()
     toast.add('success', `${projectName} 已停止`, '', 3000)
   }
 
@@ -143,6 +173,10 @@ const stopBot = async () => {
 
 const restartBot = async () => {
   if (!store.selectedBot || operating.value || deleting.value) return
+  if (isStopped.value) {
+    await runBot()
+    return
+  }
   await stopBot()
 
   const pollingInterval = 600
@@ -151,7 +185,7 @@ const restartBot = async () => {
   while (attempts < maxAttempts) {
     attempts++
     await store.loadBots()
-    if (!store.selectedBot?.is_running) break
+    if (getRuntimeState(store.selectedBot) === 'stopped') break
     await sleep(pollingInterval)
   }
 
@@ -184,7 +218,7 @@ const deleteBot = async (isFully: boolean) => {
   }
 
   if (data) {
-    await reloadAndSyncSelection()
+    await syncRuntimeState()
     toast.add('success', `${projectName} 已删除`, '', 3000)
   }
 
@@ -194,6 +228,18 @@ const deleteBot = async (isFully: boolean) => {
 onUnmounted(() => {
   clearDeleteCountdown()
 })
+
+watch(
+  () => store.selectedBot,
+  (bot) => {
+    if (!pendingRuntimeState.value || !bot) return
+    const nextState = getRuntimeState(bot)
+    if (nextState !== pendingRuntimeState.value || nextState === 'stopped') {
+      pendingRuntimeState.value = ''
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <template>
@@ -252,6 +298,12 @@ onUnmounted(() => {
             <div class="badge badge-lg" :class="statusClass">
               {{ statusLabel }}
             </div>
+            <div
+              v-if="startupDurationLabel"
+              class="badge badge-lg badge-outline font-mono text-base-content/70"
+            >
+              {{ startupDurationLabel }}
+            </div>
           </div>
 
           <p class="max-w-3xl text-sm leading-6 text-base-content/70">
@@ -270,14 +322,14 @@ onUnmounted(() => {
           <div class="rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-3 backdrop-blur">
             <div class="text-xs uppercase tracking-[0.18em] text-base-content/45">操作保护</div>
             <div class="mt-2 text-sm text-base-content/80">
-              {{ canDelete ? '实例已停止，可安全删除' : '运行中实例会禁用删除按钮' }}
+              {{ canDelete ? '实例已停止，可安全删除' : '启动中或运行中实例会禁用删除按钮' }}
             </div>
           </div>
 
           <div class="rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-3 backdrop-blur">
             <div class="text-xs uppercase tracking-[0.18em] text-base-content/45">当前节奏</div>
             <div class="mt-2 text-sm text-base-content/80">
-              {{ operating ? '正在同步状态…' : deleting ? '正在删除…' : selectedBot?.is_running ? '适合观察日志与发送维护命令' : '适合启动实例或先在 Shell 排障' }}
+              {{ operating ? '正在同步状态…' : deleting ? '正在删除…' : isStarting ? '适合停止卡住的启动流程或直接重启' : isRunning ? '适合观察日志与发送维护命令' : '适合启动实例或先在 Shell 排障' }}
             </div>
           </div>
         </div>

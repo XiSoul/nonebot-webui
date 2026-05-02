@@ -7,6 +7,7 @@ import {
   openProjectTerminal
 } from '@/client/process'
 import { generateURLForWebUI, getErrorMessage } from '@/client/utils'
+import { getRuntimeState, isRuntimeActive, type RuntimeState } from '@/utils/runtimeState'
 import { useCustomStore, useNoneBotStore, useToastStore } from '@/stores'
 import { useWebSocket } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -27,12 +28,21 @@ type DownloadProgressSnapshot = {
   timestampMs: number
 }
 
+type QuickCommand = {
+  id: string
+  label: string
+  command: string
+}
+
 const store = useNoneBotStore()
 const customStore = useCustomStore()
 const toast = useToastStore()
+const runtimeState = computed<RuntimeState>(() => getRuntimeState(store.selectedBot))
+const runtimeActive = computed(() => isRuntimeActive(store.selectedBot))
 
 const logData = ref<ProcessLog[]>([])
 const logShowTable = ref<HTMLElement>()
+const quickCommandModal = ref<HTMLDialogElement>()
 const currentBot = ref('')
 const commandInput = ref('')
 const commandSending = ref(false)
@@ -41,34 +51,12 @@ const MISSING_LOG_STORAGE_ERROR = 'Log storage not found.'
 const PROCESS_FINISHED_MESSAGE = 'Process finished.'
 const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
 const PROCESS_NOT_FOUND_ERROR = 'Process not found.'
-const LOG_CACHE_PREFIX = 'terminalLogCache:'
+const QUICK_COMMANDS_STORAGE_KEY = 'terminalQuickCommands:v1'
+const customQuickCommands = ref<QuickCommand[]>([])
+const newQuickCommandLabel = ref('')
+const newQuickCommandCommand = ref('')
 let currentTimeTimer: ReturnType<typeof setInterval> | null = null
 const currentLogKey = ref('')
-
-const getLogCacheKey = (logKey: string) => `${LOG_CACHE_PREFIX}${props.mode}:${logKey}`
-
-const saveLogCache = (logKey: string) => {
-  if (!logKey) return
-  try {
-    localStorage.setItem(getLogCacheKey(logKey), JSON.stringify(logData.value.slice(-200)))
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const restoreLogCache = (logKey: string) => {
-  if (!logKey) return false
-  try {
-    const raw = localStorage.getItem(getLogCacheKey(logKey))
-    if (!raw) return false
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return false
-    logData.value = parsed
-    return true
-  } catch {
-    return false
-  }
-}
 
 const resolveLogKey = async (projectId?: string) => {
   const id = projectId ?? store.selectedBot?.project_id
@@ -213,12 +201,73 @@ const scrollToBottom = async () => {
 
 const appendLocalLog = async (message: string) => {
   logData.value.push({ message })
-  saveLogCache(currentLogKey.value)
   await scrollToBottom()
 }
 
 const fillCommand = (value: string) => {
   commandInput.value = value
+}
+
+const saveCustomQuickCommands = () => {
+  try {
+    localStorage.setItem(QUICK_COMMANDS_STORAGE_KEY, JSON.stringify(customQuickCommands.value))
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const loadCustomQuickCommands = () => {
+  try {
+    const raw = localStorage.getItem(QUICK_COMMANDS_STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return
+    customQuickCommands.value = parsed
+      .map((item) => ({
+        id: String(item?.id ?? `${Date.now()}-${Math.random()}`),
+        label: String(item?.label ?? '').trim(),
+        command: String(item?.command ?? '').trim()
+      }))
+      .filter((item) => item.label && item.command)
+      .slice(0, 12)
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const closeQuickCommandModal = () => {
+  quickCommandModal.value?.close()
+  newQuickCommandLabel.value = ''
+  newQuickCommandCommand.value = ''
+}
+
+const openQuickCommandModal = () => {
+  newQuickCommandLabel.value = ''
+  newQuickCommandCommand.value = ''
+  quickCommandModal.value?.showModal()
+}
+
+const addQuickCommand = () => {
+  const label = newQuickCommandLabel.value.trim()
+  const command = newQuickCommandCommand.value.trim()
+  if (!label || !command) {
+    toast.add('warning', '请填写快捷命令名称和命令内容', '', 3000)
+    return
+  }
+
+  customQuickCommands.value.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label: label.slice(0, 20),
+    command
+  })
+  saveCustomQuickCommands()
+  closeQuickCommandModal()
+  toast.add('success', '快捷命令已保存到本地', '', 3000)
+}
+
+const removeQuickCommand = (id: string) => {
+  customQuickCommands.value = customQuickCommands.value.filter((item) => item.id !== id)
+  saveCustomQuickCommands()
 }
 
 const subscribeLog = (projectId?: string) => {
@@ -257,7 +306,6 @@ const getHistoryLogs = async (projectId?: string) => {
   if (data) {
     if (currentLogKey.value !== logId) return
     logData.value = data.detail
-    saveLogCache(logId)
     await scrollToBottom()
   }
 }
@@ -288,7 +336,7 @@ const isProcessUnavailableError = (error: unknown) => {
 const writeToProcess = async (content: string, displayEcho?: string) => {
   if (props.mode !== 'shell') return false
   if (!store.selectedBot) return
-  if (!store.selectedBot.is_running) {
+  if (!runtimeActive.value) {
     const ready = await ensureStoppedProjectTerminal(store.selectedBot.project_id)
     if (!ready) return false
   }
@@ -307,7 +355,7 @@ const writeToProcess = async (content: string, displayEcho?: string) => {
   if (error) {
     if (isProcessUnavailableError(error)) {
       await syncSelectedBotStatus()
-      if (!store.selectedBot?.is_running) {
+      if (!isRuntimeActive(store.selectedBot)) {
         const ready = await ensureStoppedProjectTerminal(store.selectedBot.project_id)
         if (!ready) return false
 
@@ -342,9 +390,9 @@ const sendCommand = async () => {
   const command = commandInput.value.trim()
   if (!command) return
 
-  if (store.selectedBot?.is_running && status.value !== 'OPEN') {
+  if (runtimeActive.value && status.value !== 'OPEN') {
     await syncSelectedBotStatus()
-    if (store.selectedBot?.is_running) {
+    if (isRuntimeActive(store.selectedBot)) {
       toast.add('warning', '实例运行中，但终端连接已断开，请先重连。', '', 3000)
       return
     }
@@ -406,20 +454,20 @@ const canWriteCommand = computed(
   () =>
     props.mode === 'shell' &&
     Boolean(store.selectedBot) &&
-    (!store.selectedBot?.is_running || status.value === 'OPEN') &&
+    (!runtimeActive.value || status.value === 'OPEN') &&
     !commandSending.value
 )
 const canInterrupt = computed(
   () =>
     props.mode === 'shell' &&
     Boolean(store.selectedBot) &&
-    (!store.selectedBot?.is_running || status.value === 'OPEN') &&
+    (!runtimeActive.value || status.value === 'OPEN') &&
     !commandSending.value
 )
 const terminalModeLabel = computed(() => {
   if (!store.selectedBot) return '未选择实例'
   if (props.mode === 'runtime') return '实例运行日志'
-  if (store.selectedBot.is_running) {
+  if (runtimeActive.value) {
     return status.value === 'OPEN' ? '并行 Shell' : '等待重连'
   }
   return 'Shell 会话'
@@ -427,7 +475,7 @@ const terminalModeLabel = computed(() => {
 const commandPlaceholder = computed(() => {
   if (props.mode !== 'shell') return '当前页面仅展示实例运行日志'
   if (!store.selectedBot) return '请先选择实例'
-  if (store.selectedBot.is_running) {
+  if (runtimeActive.value) {
     if (status.value === 'OPEN') return '输入命令，例如 pip install、playwright install、nb run'
     return '实例运行中，但 Shell 连接已断开，请先重连或等待状态同步'
   }
@@ -472,15 +520,15 @@ const downloadProgressState = computed(() => {
 })
 
 onMounted(async () => {
+  loadCustomQuickCommands()
   currentTimeTimer = setInterval(() => {
     currentTimeMs.value = Date.now()
   }, 1000)
 
   if (!store.selectedBot) return
   const logKey = await resolveLogKey(store.selectedBot.project_id)
-  restoreLogCache(logKey)
   await getHistoryLogs(logKey)
-  if (props.mode === 'shell' && !store.selectedBot.is_running) {
+  if (props.mode === 'shell' && !runtimeActive.value) {
     await ensureStoppedProjectTerminal(store.selectedBot.project_id)
   }
   open()
@@ -501,7 +549,6 @@ watch(
 
     const parsedData: ProcessLog = JSON.parse(rawData.toString())
     logData.value.push(parsedData)
-    saveLogCache(currentLogKey.value)
     if (parsedData.message === PROCESS_FINISHED_MESSAGE) {
       await syncSelectedBotStatus()
     }
@@ -534,7 +581,7 @@ watch(
       currentBot.value = nextLogKey
       logData.value = []
       await getHistoryLogs(nextLogKey)
-      if (props.mode === 'shell' && !store.selectedBot?.is_running) {
+      if (props.mode === 'shell' && !isRuntimeActive(store.selectedBot)) {
         await ensureStoppedProjectTerminal(projectId)
       }
     }
@@ -549,8 +596,8 @@ watch(
 )
 
 watch(
-  () => store.selectedBot?.is_running,
-  async (isRunning) => {
+  () => runtimeState.value,
+  async (state) => {
     const projectId = store.selectedBot?.project_id
     if (!projectId) return
     const logKey = await resolveLogKey(projectId)
@@ -563,7 +610,7 @@ watch(
       return
     }
 
-    if (isRunning) {
+    if (state === 'running' || state === 'starting') {
       await getHistoryLogs(logKey)
       if (status.value !== 'OPEN') {
         open()
@@ -594,6 +641,51 @@ const retry = () => {
 
 <template>
   <section class="w-full self-start rounded-[28px] border border-base-content/10 bg-base-200 p-5 shadow-sm lg:p-6">
+    <dialog ref="quickCommandModal" class="modal">
+      <div class="modal-box rounded-[24px] border border-base-content/10 bg-base-100 shadow-2xl flex flex-col gap-4">
+        <div class="flex flex-col gap-2">
+          <h3 class="font-semibold text-lg">新增快捷命令</h3>
+          <p class="text-sm opacity-70">
+            快捷命令会保存到当前浏览器本地，下次打开终端页仍然可用。
+          </p>
+        </div>
+
+        <label class="form-control">
+          <div class="label py-1">
+            <span class="label-text">命令名称</span>
+          </div>
+          <input
+            v-model="newQuickCommandLabel"
+            class="input input-bordered"
+            placeholder="例如：安装依赖"
+          />
+        </label>
+
+        <label class="form-control">
+          <div class="label py-1">
+            <span class="label-text">命令内容</span>
+          </div>
+          <textarea
+            v-model="newQuickCommandCommand"
+            class="textarea textarea-bordered min-h-28 font-mono text-sm"
+            placeholder="请输入要发送到终端的命令"
+          ></textarea>
+        </label>
+
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-sm btn-ghost" type="button" @click="closeQuickCommandModal()">
+            取消
+          </button>
+          <button class="btn btn-sm btn-primary text-base-100" type="button" @click="addQuickCommand()">
+            保存
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @submit.prevent="closeQuickCommandModal()">
+        <button>close</button>
+      </form>
+    </dialog>
+
     <div class="flex flex-col gap-5">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div class="flex min-w-0 flex-1 flex-col gap-3">
@@ -760,16 +852,24 @@ const retry = () => {
         class="flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 backdrop-blur"
         @submit.prevent="sendCommand"
       >
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">常用命令</span>
-          <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('python -m pip install -U ')">
-            pip 安装
-          </button>
-          <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('python -m playwright install chromium')">
-            playwright 浏览器
-          </button>
-          <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('nb run')">nb run</button>
-        </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">常用命令</span>
+            <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('python -m pip install -U ')">
+              pip 安装
+            </button>
+            <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('nb run')">nb run</button>
+            <button class="btn btn-xs btn-outline btn-primary" type="button" @click="openQuickCommandModal()">
+              +
+            </button>
+            <template v-for="item in customQuickCommands" :key="item.id">
+              <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand(item.command)">
+                {{ item.label }}
+              </button>
+              <button class="btn btn-xs btn-ghost px-2" type="button" title="删除快捷命令" @click="removeQuickCommand(item.id)">
+                ×
+              </button>
+            </template>
+          </div>
 
         <div class="flex flex-col gap-3 lg:flex-row">
           <input

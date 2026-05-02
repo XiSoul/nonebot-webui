@@ -187,6 +187,8 @@ export type NoneBotProjectMeta = {
   discovered_plugin_dirs?: Array<string>
   builtin_plugins: Array<string>
   is_running?: boolean
+  runtime_state?: string
+  startup_duration_seconds?: number
   use_env?: string
   use_run_script?: boolean
   run_script_name?: string

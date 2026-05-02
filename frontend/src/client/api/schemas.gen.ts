@@ -703,6 +703,16 @@ export const NoneBotProjectMetaSchema = {
       type: 'boolean',
       default: false
     },
+    runtime_state: {
+      title: 'Runtime State',
+      type: 'string',
+      default: 'stopped'
+    },
+    startup_duration_seconds: {
+      title: 'Startup Duration Seconds',
+      type: 'number',
+      default: 0
+    },
     use_env: {
       title: 'Use Env',
       type: 'string',

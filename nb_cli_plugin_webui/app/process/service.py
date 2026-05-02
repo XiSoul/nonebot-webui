@@ -46,10 +46,14 @@ HTMLRENDER_PROJECT_FILES = (
 HTMLRENDER_PLAYWRIGHT_TIMEOUT_SECONDS = 20 * 60
 PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT = "300000"
 HTMLRENDER_INSTALL_TASKS: Dict[str, asyncio.Task] = dict()
+HTMLRENDER_PROJECT_SCAN_CACHE: Dict[str, Tuple[float, bool]] = dict()
 PROCESS_START_STABILITY_SECONDS = 2.0
+PROCESS_START_WITH_PORT_STABILITY_SECONDS = 0.5
 PROJECT_READY_TIMEOUT_SECONDS = 90.0
 PROJECT_SHELL_LOG_SUFFIX = ":shell"
 PLAYWRIGHT_DIRLOCK_STALE_SECONDS = 5 * 60
+HTMLRENDER_PROJECT_SCAN_CACHE_SECONDS = 30.0
+PORT_PICK_DETERMINISTIC_WINDOW = 128
 
 
 class ProjectShellSessionManager:
@@ -107,7 +111,28 @@ def _pick_available_port(project_id: str) -> int:
     reserved_ports = set(
         project_service.get_project_port_usage(exclude_project_id=project_id).keys()
     )
-    for offset in range(0, 20000):
+    for offset in range(0, PORT_PICK_DETERMINISTIC_WINDOW):
+        candidate = base + offset
+        if candidate > 65535:
+            candidate = 1024 + (candidate - 65536)
+        if candidate not in reserved_ports and _is_port_available(candidate):
+            return candidate
+
+    # Fall back to an OS-assigned ephemeral port instead of probing thousands of
+    # candidates serially when the deterministic window is exhausted.
+    for _ in range(16):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("0.0.0.0", 0))
+            except OSError:
+                continue
+            candidate = int(sock.getsockname()[1])
+
+        if candidate > 0 and candidate not in reserved_ports:
+            return candidate
+
+    for offset in range(PORT_PICK_DETERMINISTIC_WINDOW, 20000):
         candidate = base + offset
         if candidate > 65535:
             candidate = 1024 + (candidate - 65536)
@@ -136,6 +161,12 @@ def _resolve_runtime_path(project_dir: Path, raw_value: str) -> str:
 
 
 def _project_mentions_htmlrender(project_meta, project_dir: Path) -> bool:
+    cache_key = str(getattr(project_meta, "project_id", "") or project_dir)
+    cached = HTMLRENDER_PROJECT_SCAN_CACHE.get(cache_key)
+    now = time.time()
+    if cached is not None and (now - cached[0]) < HTMLRENDER_PROJECT_SCAN_CACHE_SECONDS:
+        return cached[1]
+
     project_plugins = getattr(project_meta, "plugins", None) or []
     for plugin in project_plugins:
         plugin_module = str(getattr(plugin, "module_name", "") or "").lower()
@@ -146,6 +177,7 @@ def _project_mentions_htmlrender(project_meta, project_dir: Path) -> bool:
             for marker in HTMLRENDER_DEPENDENCY_MARKERS
             for value in (plugin_module, plugin_link, plugin_name)
         ):
+            HTMLRENDER_PROJECT_SCAN_CACHE[cache_key] = (now, True)
             return True
 
     for file_name in HTMLRENDER_PROJECT_FILES:
@@ -160,8 +192,10 @@ def _project_mentions_htmlrender(project_meta, project_dir: Path) -> bool:
             continue
 
         if any(marker in content for marker in HTMLRENDER_DEPENDENCY_MARKERS):
+            HTMLRENDER_PROJECT_SCAN_CACHE[cache_key] = (now, True)
             return True
 
+    HTMLRENDER_PROJECT_SCAN_CACHE[cache_key] = (now, False)
     return False
 
 
@@ -803,6 +837,7 @@ async def _wait_for_project_ready(
             raise RuntimeError("；".join(detail_parts))
 
         if _can_connect_to_port(host, port):
+            process.runtime_state = "running"
             return
 
         if asyncio.get_running_loop().time() >= deadline:
@@ -903,6 +938,7 @@ async def execute_project_command(
 
 
 async def run_nonebot_project(project: project_service.NoneBotProjectManager):
+    startup_started_at = time.perf_counter()
     project_meta = project.read()
     if not project_meta.adapters:
         raise AdapterNotFound()
@@ -914,7 +950,6 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     project_dir = Path(project_meta.project_dir)
     env, _ = build_project_runtime_env(project_meta)
     log_storage = ensure_project_runtime_log_storage(project_meta.project_id)
-
     env_file = project_dir / project_meta.use_env
     env_data = dotenv_values(env_file) if env_file.exists() else {}
     configured_host = str(env_data.get("HOST", "")).strip()
@@ -934,18 +969,12 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     )
     if run_port:
         env["PORT"] = str(run_port)
-        project.write_to_env(project_meta.use_env, "PORT", str(run_port))
+        if str(env_data.get("PORT", "")).strip() != str(run_port):
+            project.write_to_env(project_meta.use_env, "PORT", str(run_port))
     host = configured_host or "0.0.0.0"
     env["HOST"] = host
-    if not configured_host:
+    if str(env_data.get("HOST", "")).strip() != host:
         project.write_to_env(project_meta.use_env, "HOST", host)
-
-    await _ensure_htmlrender_browser_ready(
-        project_meta,
-        env,
-        log_storage=log_storage,
-        block=True,
-    )
 
     process = ProcessManager.get_process(project_meta.project_id)
     if process:
@@ -983,6 +1012,7 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
                 log_destroy_seconds=log_destroy_time,
                 project_id=project_meta.project_id,
                 project_name=project_meta.project_name,
+                terminate_duplicate_processes=False,
             )
         else:
             process = Processor(
@@ -994,6 +1024,7 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
                 log_destroy_seconds=log_destroy_time,
                 project_id=project_meta.project_id,
                 project_name=project_meta.project_name,
+                terminate_duplicate_processes=False,
             )
 
         process.log_storage = log_storage
@@ -1004,6 +1035,11 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
         process,
         project_name=project_meta.project_name,
         log_storage=log_storage,
+        timeout=(
+            PROCESS_START_WITH_PORT_STABILITY_SECONDS
+            if run_port
+            else PROCESS_START_STABILITY_SECONDS
+        ),
     )
     if run_port:
         await _wait_for_project_ready(
@@ -1013,6 +1049,7 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
             port=run_port,
             log_storage=log_storage,
         )
+    startup_duration = max(0.0, time.perf_counter() - startup_started_at)
 
 
 async def restart_nonebot_project_if_running(

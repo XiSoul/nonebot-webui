@@ -18,6 +18,10 @@ from .log import LogStorage as BaseLogStorage
 from .schemas import ProcessLog, ProcessInfo, ProcessPerformance
 
 SHELL_COMMAND_DONE_MARKER = "__NB_WEBUI_CMD_DONE__:"
+RUNTIME_READY_MARKERS = (
+    "Application startup complete.",
+    "Uvicorn running on ",
+)
 
 
 class LogStorage(BaseLogStorage[ProcessLog]):
@@ -61,6 +65,7 @@ class Processor:
         self.output_task = None
         self.error_task = None
         self.finished_logged = False
+        self.runtime_state = "stopped"
 
     def _repair_project_executable(self) -> None:
         if WINDOWS or not self.args:
@@ -141,6 +146,8 @@ class Processor:
 
                 log_model = ProcessLog(message=output)
                 await self.log_storage.add_log(log_model)
+                if any(marker in output for marker in RUNTIME_READY_MARKERS):
+                    self.runtime_state = "running"
                 if self.project_id:
                     append_instance_log(
                         project_id=self.project_id,
@@ -163,22 +170,28 @@ class Processor:
         process = self.process
         if process is None:
             self.process_is_running = False
+            self.runtime_state = "stopped"
             return False
 
         if process.returncode is not None:
             self.process_is_running = False
+            self.runtime_state = "stopped"
             return False
 
         try:
             ps = psutil.Process(process.pid)
             if not ps.is_running() or ps.status() == psutil.STATUS_ZOMBIE:
                 self.process_is_running = False
+                self.runtime_state = "stopped"
                 return False
         except psutil.Error:
             self.process_is_running = False
+            self.runtime_state = "stopped"
             return False
 
         self.process_is_running = True
+        if self.runtime_state not in {"starting", "running"}:
+            self.runtime_state = "starting"
         return True
 
     async def _finalize_process_exit(self, pid: Optional[int]) -> None:
@@ -238,6 +251,7 @@ class Processor:
         self._repair_project_executable()
         await self._process_executer()
         self.process_is_running = True
+        self.runtime_state = "starting"
         self.finished_logged = False
         if self.project_id:
             append_instance_log(
@@ -273,9 +287,11 @@ class Processor:
                 except asyncio.TimeoutError:
                     log.warning(f"Process force kill wait timed out for pid={pid}.")
             self.process_is_running = False
+            self.runtime_state = "stopped"
             log.info(f"Process {pid=} terminated.")
 
         self.process_is_running = False
+        self.runtime_state = "stopped"
 
         if self.output_task:
             self.output_task.cancel()

@@ -10,6 +10,7 @@ import { updateProjectPlugin } from '@/client/store'
 import { compareSemanticVersion, getErrorMessage } from '@/client/utils'
 import router from '@/router'
 import { useNoneBotStore, useToastStore } from '@/stores'
+import { isRuntimeActive } from '@/utils/runtimeState'
 import { useFetch } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 
@@ -37,7 +38,7 @@ const pluginsRef = ref<Plugin[]>()
 const adaptersRef = ref<Adapter[]>()
 const driversRef = ref<Driver[]>()
 const updatingPluginNames = ref<string[]>([])
-const isModuleActionLocked = computed(() => Boolean(store.selectedBot?.is_running))
+const isModuleActionLocked = computed(() => isRuntimeActive(store.selectedBot))
 
 const normalizePackageName = (value?: string) => {
   return `${value ?? ''}`.trim().replace(/[-_.]+/g, '-').replace(/^-+|-+$/g, '')
@@ -79,7 +80,7 @@ const ensureBotStopped = () => {
     return false
   }
 
-  if (store.selectedBot.is_running) {
+  if (isRuntimeActive(store.selectedBot)) {
     toast.add('warning', '实例运行中，请先停止实例后再进行插件、适配器或驱动操作', '', 5000)
     return false
   }

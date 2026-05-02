@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useNoneBotStore, useToastStore } from '@/stores'
+import { isRuntimeActive } from '@/utils/runtimeState'
 import {
   createProjectEnvFile,
   getProjectDotenvFile,
@@ -260,7 +261,7 @@ const loadWorkbench = async () => {
 const savePyproject = async () => {
   if (!nonebotStore.selectedBot) return
 
-  const wasRunning = Boolean(nonebotStore.selectedBot.is_running)
+  const wasRunning = isRuntimeActive(nonebotStore.selectedBot)
 
   pyprojectSaving.value = true
   pyprojectSaveStage.value = 'saving'
@@ -297,7 +298,7 @@ const persistEnvCard = async (card: EnvCardState, rawText: string, sourceLabel: 
   if (!nonebotStore.selectedBot) return
 
   const projectId = nonebotStore.selectedBot.project_id
-  const wasRunning = Boolean(nonebotStore.selectedBot.is_running)
+  const wasRunning = isRuntimeActive(nonebotStore.selectedBot)
   const nextRawText = normalizeRawText(rawText)
   card.savingMessage = '正在保存配置...'
 
@@ -417,7 +418,7 @@ watch(
         </div>
 
         <div v-if="pyprojectSaving" class="text-right text-xs opacity-70">
-          {{ getPostSaveHint(Boolean(nonebotStore.selectedBot?.is_running)) }}
+          {{ getPostSaveHint(isRuntimeActive(nonebotStore.selectedBot)) }}
         </div>
       </section>
 

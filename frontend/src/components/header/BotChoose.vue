@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useNoneBotStore } from '@/stores'
+import { getRuntimeState } from '@/utils/runtimeState'
 import DrawerItem from '@/components/DrawerItem.vue'
 import CreateBotIndex from '@/components/Modals/CreateBot/CreateBotIndex.vue'
 
@@ -62,7 +63,24 @@ const drawerRef = ref<InstanceType<typeof DrawerItem> | null>(null)
             >
               选择中
             </div>
-            <div v-if="bot.is_running" class="badge badge-success text-base-100">运行中</div>
+            <div
+              class="badge"
+              :class="
+                getRuntimeState(bot) === 'running'
+                  ? 'badge-success text-base-100'
+                  : getRuntimeState(bot) === 'starting'
+                    ? 'badge-warning'
+                    : 'badge-ghost'
+              "
+            >
+              {{
+                getRuntimeState(bot) === 'running'
+                  ? '运行中'
+                  : getRuntimeState(bot) === 'starting'
+                    ? '启动中'
+                    : '未运行'
+              }}
+            </div>
           </div>
         </div>
       </div>
