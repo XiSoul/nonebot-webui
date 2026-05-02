@@ -26,6 +26,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       image_tag: ${{ steps.image_tag.outputs.TAG }}
       app_version: ${{ steps.app_version.outputs.VERSION }}
+      app_minor_version: ${{ steps.app_minor_version.outputs.VERSION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -50,11 +51,23 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
+      - name: Warn when Docker Hub push is disabled
+        if: ${{ env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == '' }}
+        run: |
+          echo "Docker Hub credentials are not configured. This run will only push to GHCR."
+
       - name: Read package version
         id: app_version
         run: |
           VERSION="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Read package major.minor version
+        id: app_minor_version
+        run: |
+          VERSION="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
+          MAJOR_MINOR="$(echo "$VERSION" | awk -F'.' '{print $1 "." $2}')"
+          echo "VERSION=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
 
       - name: Generate image tag
         id: image_tag
@@ -78,6 +91,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.app_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.app_minor_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build and Push
         uses: docker/build-push-action@v6
@@ -94,6 +109,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Print published tags
+        run: |
+          echo "Published image tags:"
+          echo "${{ steps.meta.outputs.tags }}"
 
   deploy:
     name: Deploy to Test Server
