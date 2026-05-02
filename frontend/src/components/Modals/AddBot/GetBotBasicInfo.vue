@@ -37,7 +37,6 @@ const search = async () => {
 
     store.searchBotSuccess = true
     store.warningMessage = ''
-    inputValue.value = ''
   }
 }
 </script>
@@ -73,6 +72,11 @@ const search = async () => {
       <div class="flex gap-4 rounded-lg p-4 bg-base-200">
         <span class="font-semibold">实例名称:</span>
         {{ store.projectName }}
+      </div>
+
+      <div class="flex gap-4 rounded-lg p-4 bg-base-200">
+        <span class="font-semibold">原始输入路径:</span>
+        <span class="font-mono break-all">{{ inputValue || store.projectPath }}</span>
       </div>
 
       <div class="flex gap-4 rounded-lg p-4 bg-base-200">
