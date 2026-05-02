@@ -6,27 +6,19 @@ ARG APT_MIRROR=
 ARG PIP_INDEX_URL=
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
-ARG SKIP_FRONTEND_BUILD=0
 
-FROM node:20 AS frontend-build
-
-ARG SKIP_FRONTEND_BUILD=0
+FROM node:22 AS frontend-build
 
 WORKDIR /app
 
-COPY nb_cli_plugin_webui/dist/ nb_cli_plugin_webui/dist/
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 
-RUN if [ "$SKIP_FRONTEND_BUILD" != "1" ]; then \
-      corepack enable && pnpm install --frozen-lockfile; \
-    fi
+RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY frontend/ frontend/
 
-RUN if [ "$SKIP_FRONTEND_BUILD" != "1" ]; then \
-      pnpm -C frontend run build-only; \
-    fi
+RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
@@ -35,7 +27,6 @@ ARG VCS_REF=unknown
 ARG PIP_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL
 ARG PIP_TRUSTED_HOST
-ARG SKIP_FRONTEND_BUILD=0
 
 RUN if [ -n "$PIP_INDEX_URL$PIP_EXTRA_INDEX_URL$PIP_TRUSTED_HOST" ]; then \
       printf '[global]\n' > /etc/pip.conf; \
@@ -63,7 +54,6 @@ FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 ARG APP_VERSION=0.4.6
 ARG VCS_REF=unknown
 ARG APT_MIRROR
-ARG SKIP_FRONTEND_BUILD=0
 EXPOSE 18080
 
 # 创建挂载目录

@@ -222,15 +222,6 @@ docker logs nonebot-webui
 - `WEBUI_PIP_EXTRA_INDEX_URL`
 - `WEBUI_PIP_TRUSTED_HOST`
 
-### 本地镜像排查
-
-如果你是在本机或 WSL 里排查 Docker 镜像问题，仓库额外提供了一个只用于调试的构建参数：
-
-- `SKIP_FRONTEND_BUILD=1`
-
-它会直接复用仓库内现成的 `nb_cli_plugin_webui/dist`，跳过 Node / pnpm 的前端重新构建步骤，方便先验证 Python、Playwright、Linux 运行库和实例启动链路。
-正式发布时默认不要开启这个参数，仍应走完整前端构建流程。
-
 ## 常见提醒
 
 - WebUI 新建实例默认放在 `/projects`
