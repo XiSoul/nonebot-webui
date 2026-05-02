@@ -1,4 +1,4 @@
-ARG APP_VERSION=0.4.5
+ARG APP_VERSION=0.4.6
 ARG VCS_REF=
 ARG PYTHON_IMAGE=3.11
 ARG VARIANT=
@@ -6,27 +6,36 @@ ARG APT_MIRROR=
 ARG PIP_INDEX_URL=
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
+ARG SKIP_FRONTEND_BUILD=0
 
 FROM node:20 AS frontend-build
 
+ARG SKIP_FRONTEND_BUILD=0
+
 WORKDIR /app
 
+COPY nb_cli_plugin_webui/dist/ nb_cli_plugin_webui/dist/
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN if [ "$SKIP_FRONTEND_BUILD" != "1" ]; then \
+      corepack enable && pnpm install --frozen-lockfile; \
+    fi
 
 COPY frontend/ frontend/
 
-RUN pnpm -C frontend run build-only
+RUN if [ "$SKIP_FRONTEND_BUILD" != "1" ]; then \
+      pnpm -C frontend run build-only; \
+    fi
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
-ARG APP_VERSION=0.4.5
+ARG APP_VERSION=0.4.6
 ARG VCS_REF=unknown
 ARG PIP_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL
 ARG PIP_TRUSTED_HOST
+ARG SKIP_FRONTEND_BUILD=0
 
 RUN if [ -n "$PIP_INDEX_URL$PIP_EXTRA_INDEX_URL$PIP_TRUSTED_HOST" ]; then \
       printf '[global]\n' > /etc/pip.conf; \
@@ -51,9 +60,10 @@ RUN pip install --no-deps .
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 
-ARG APP_VERSION=0.4.5
+ARG APP_VERSION=0.4.6
 ARG VCS_REF=unknown
 ARG APT_MIRROR
+ARG SKIP_FRONTEND_BUILD=0
 EXPOSE 18080
 
 # 创建挂载目录
@@ -92,12 +102,16 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     fi \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y --no-install-recommends \
+        libasound2t64 \
         libnspr4 \
         libnss3 \
         libdbus-1-3 \
         libatk1.0-0t64 \
         libatk-bridge2.0-0t64 \
         libcups2t64 \
+        libevent-2.1-7t64 \
+        libharfbuzz-icu0 \
+        libicu76 \
         libxkbcommon0 \
         libatspi2.0-0t64 \
         libxcomposite1 \
@@ -117,7 +131,10 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         libwoff1 \
         libvpx9 \
         libopus0 \
+        libwebpdemux2 \
+        libwebpmux3 \
         libflite1 \
+        libxslt1.1 \
         libjxl0.11 \
         libavif16 \
         libenchant-2-2 \
@@ -126,11 +143,10 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         libmanette-0.2-0 \
         libgles2 \
         libx264-164 \
-        libasound2t64 \
     && ln -sf /usr/lib/x86_64-linux-gnu/libx264.so.164 /usr/lib/x86_64-linux-gnu/libx264.so \
     && rm -rf /var/lib/apt/lists/*
 
-CMD nb ui run
+CMD ["nb", "ui", "run"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import json,sys,urllib.request; from pathlib import Path; path=Path('/app/config.json'); port=str((json.loads(path.read_text(encoding='utf-8')).get('port') if path.exists() else None) or '18080'); urllib.request.urlopen(f'http://127.0.0.1:{port}', timeout=5); sys.exit(0)"

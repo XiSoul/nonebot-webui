@@ -217,6 +217,13 @@ def _default_nonebot2_data_dir(env: dict) -> Path:
     return home_dir / ".local" / "share" / "nonebot2"
 
 
+def _is_socks_proxy_url(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    return normalized.startswith(
+        ("socks4://", "socks4a://", "socks5://", "socks5h://")
+    )
+
+
 def _clear_stale_htmlrender_dirlock(env: dict, log_storage: Optional[LogStorage] = None) -> None:
     lock_path = (
         _default_nonebot2_data_dir(env)
@@ -629,6 +636,7 @@ async def _ensure_htmlrender_browser_ready(
         or str(env.get("HTTPS_PROXY") or env.get("https_proxy") or "").strip()
         or str(env.get("HTTP_PROXY") or env.get("http_proxy") or "").strip()
     )
+    socks_proxy_active = _is_socks_proxy_url(active_proxy)
 
     if log_storage is not None:
         await log_storage.add_log(
@@ -666,6 +674,16 @@ async def _ensure_htmlrender_browser_ready(
                     ),
                 )
             )
+            if socks_proxy_active:
+                await log_storage.add_log(
+                    CustomLog(
+                        level="INFO",
+                        message=(
+                            "当前代理为 SOCKS 协议，启动前预装只下载 Playwright Chromium，"
+                            "不依赖 apt 安装系统库；Linux 运行库需由 WebUI 容器镜像预先提供。"
+                        ),
+                    )
+                )
         else:
             await log_storage.add_log(
                 CustomLog(
@@ -975,6 +993,13 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     env["HOST"] = host
     if str(env_data.get("HOST", "")).strip() != host:
         project.write_to_env(project_meta.use_env, "HOST", host)
+
+    await _ensure_htmlrender_browser_ready(
+        project_meta,
+        env,
+        log_storage=log_storage,
+        block=True,
+    )
 
     process = ProcessManager.get_process(project_meta.project_id)
     if process:

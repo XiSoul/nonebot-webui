@@ -1,8 +1,8 @@
 # Release Notes Draft 2026-05-01
 
-这份清单用于记录 `0.4.5` 计划带上的修复项。
+这份清单用于记录 `0.4.6` 计划带上的修复项。
 
-## 0.4.5 已纳入修复
+## 0.4.6 已纳入修复
 
 ### 1. Docker / NAS 创建容器体验修复
 
@@ -64,21 +64,27 @@
   - 改为统一走 `get_version()`
   - 修复改包名后镜像启动 `PackageNotFoundError`
 
-## 本次明确不纳入发版
-
-### htmlrender / Playwright 下载链路
+### 7. htmlrender / Playwright 启动前预装与 Linux 依赖补齐
 
 - 文件:
+  - `Dockerfile`
+  - `README.md`
   - `nb_cli_plugin_webui/app/process/service.py`
-- 原因:
-  - 当前不同平台行为差异大
-  - 你已经明确说明这条先不动，后面有时间再单独测试
-  - 不建议在这次发版里继续混入 htmlrender 下载策略调整
+- 内容:
+  - WebUI 启动实例前会先尝试用项目自己的 Python 环境执行 `python -m playwright install chromium`
+  - `nonebot_plugin_htmlrender` 场景下统一补齐 `PLAYWRIGHT_BROWSERS_PATH` 和下载超时等运行时环境
+  - Docker 镜像内补齐 Playwright Chromium 常见 Linux 运行库，覆盖 `libicu76`、`libxslt1.1`、`libevent-2.1-7t64`、`libwebpdemux2`、`libwebpmux3`、`libharfbuzz-icu0` 等缺失项
+  - 遇到 SOCKS 代理时，日志会明确说明系统库依赖镜像内提供，避免把插件内部 `--with-deps` 失败误判成浏览器未下载
+
+## 本次测试备注
+
+- WSL 侧 Docker `buildx` 插件曾出现段错误，已在本机补装系统包版 `docker-buildx`
+- 当前仓库额外加入了 `SKIP_FRONTEND_BUILD=1` 构建开关，仅用于本地/WSL 排查镜像问题时复用现成前端产物；默认发布流程仍走完整前端构建
 
 ## 发版前建议确认
 
-1. 确认 `pyproject.toml` 版本号与待打 tag `v0.4.5` 一致
-2. 确认 `Dockerfile` 中 `APP_VERSION` 已同步更新到 `0.4.5`
-3. 确认这次不包含 `htmlrender` 下载源策略调整
-4. 构建镜像后优先验证 NAS 容器创建页是否还会自动带出错误挂载
+1. 确认 `pyproject.toml` 版本号与待打 tag `v0.4.6` 一致
+2. 确认 `Dockerfile` 中 `APP_VERSION` 已同步更新到 `0.4.6`
+3. 构建镜像后优先验证 `nonebot_plugin_htmlrender` 项目的 Playwright Chromium 预装与启动
+4. 复测 NAS / Docker 场景下的路径映射与默认挂载说明
 5. 复测“添加实例失败”场景，确认不再留脏记录

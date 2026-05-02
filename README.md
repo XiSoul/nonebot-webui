@@ -77,7 +77,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-推荐优先使用显式版本号，例如 `0.4.5`、`0.4`，后面做升级、回滚、版本检测会更方便。
+推荐优先使用显式版本号，例如 `0.4.6`、`0.4`，后面做升级、回滚、版本检测会更方便。
 
 ### 非 Docker 安装
 
@@ -166,7 +166,16 @@ WebUI 会自动把它解析并保存为容器内的真实绝对路径。
 
 另外，添加的目录本身需要是一个 NoneBot 项目根目录，至少应当能看到 `pyproject.toml`。如果 `pyproject.toml` 在子目录里，就填写那个子目录，不要填到父目录。
 
-本镜像当前不内置 Playwright Linux 系统依赖；若你管理的外部项目自身依赖 Playwright，请在对应项目运行环境中单独安装。
+本镜像已内置 WebUI 预装 `nonebot_plugin_htmlrender` / Playwright Chromium 常见所需的 Linux 运行库。
+
+如果你的外部项目依赖 Playwright，WebUI 在启动实例前会优先尝试用该项目自己的 Python 环境执行：
+
+```shell
+python -m playwright install chromium
+```
+
+浏览器二进制仍然安装在实例运行时可见的目录里，不会直接打进项目仓库。
+如果你的网络环境使用 SOCKS 代理，WebUI 会继续保留实例代理环境用于下载 Chromium，但系统库仍然依赖当前 WebUI 容器镜像提供。
 
 ### 登录说明
 
@@ -213,6 +222,15 @@ docker logs nonebot-webui
 - `WEBUI_PIP_EXTRA_INDEX_URL`
 - `WEBUI_PIP_TRUSTED_HOST`
 
+### 本地镜像排查
+
+如果你是在本机或 WSL 里排查 Docker 镜像问题，仓库额外提供了一个只用于调试的构建参数：
+
+- `SKIP_FRONTEND_BUILD=1`
+
+它会直接复用仓库内现成的 `nb_cli_plugin_webui/dist`，跳过 Node / pnpm 的前端重新构建步骤，方便先验证 Python、Playwright、Linux 运行库和实例启动链路。
+正式发布时默认不要开启这个参数，仍应走完整前端构建流程。
+
 ## 常见提醒
 
 - WebUI 新建实例默认放在 `/projects`
@@ -221,7 +239,7 @@ docker logs nonebot-webui
 - 如果实例根目录里没有 `pyproject.toml`，说明你填错目录层级了
 - 首次登录凭证请去容器日志里看
 - 想回头找 token，直接看容器日志，不是在页面里反查
-- 如果某些插件依赖 Playwright 或系统库，请在对应机器人项目自己的运行环境里安装，不是装在 WebUI 容器里
+- 如果某些插件依赖 Playwright，优先让 WebUI 在实例启动前自动预装；若项目还有额外浏览器或系统库要求，再按该项目自身文档补充
 
 ## 发布流程
 
@@ -245,12 +263,12 @@ docker logs nonebot-webui
 - `${major}.${minor}`
 - `${version}`
 
-例如版本 `0.4.5` 会自动生成：
+例如版本 `0.4.6` 会自动生成：
 
 - `xisoul/nonebot-webui:latest`
 - `xisoul/nonebot-webui:master`
 - `xisoul/nonebot-webui:0.4`
-- `xisoul/nonebot-webui:0.4.5`
+- `xisoul/nonebot-webui:0.4.6`
 
 ### 推荐发版步骤
 
@@ -258,7 +276,7 @@ docker logs nonebot-webui
 2. 更新 `pyproject.toml` 中的版本号
 3. 同步更新 `Dockerfile` 中的 `APP_VERSION`
 4. 提交代码
-5. 打版本 tag，例如 `v0.4.5`
+5. 打版本 tag，例如 `v0.4.6`
 6. 推送 `master` 和对应 tag
 
 示例：
@@ -268,8 +286,8 @@ git add .
 git commit -m "feat: your change"
 git push origin master
 
-git tag v0.4.5
-git push origin v0.4.5
+git tag v0.4.6
+git push origin v0.4.6
 ```
 
 ### 重要说明
