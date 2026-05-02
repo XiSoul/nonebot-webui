@@ -93,46 +93,81 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y --no-install-recommends \
         libasound2t64 \
-        libnspr4 \
-        libnss3 \
-        libdbus-1-3 \
         libatk1.0-0t64 \
         libatk-bridge2.0-0t64 \
-        libcups2t64 \
+        libatomic1 \
+        libcairo2 \
         libevent-2.1-7t64 \
-        libharfbuzz-icu0 \
-        libicu76 \
-        libxkbcommon0 \
         libatspi2.0-0t64 \
+        libcups2t64 \
+        libdbus-1-3 \
+        libdrm2 \
+        libegl1 \
+        libenchant-2-2 \
+        libepoxy0 \
+        libevdev2 \
+        libflite1 \
+        libfontconfig1 \
+        libfreetype6 \
+        libgbm1 \
+        libgdk-pixbuf-2.0-0 \
+        libgles2 \
+        libglib2.0-0t64 \
+        libglx0 \
+        libgraphene-1.0-0 \
+        libgstreamer1.0-0 \
+        libgstreamer-gl1.0-0 \
+        libgstreamer-plugins-bad1.0-0 \
+        libgstreamer-plugins-base1.0-0 \
+        libgtk-3-0t64 \
+        libgtk-4-1 \
+        libgudev-1.0-0 \
+        libharfbuzz-icu0 \
+        libharfbuzz0b \
+        libhyphen0 \
+        libicu76 \
+        libjpeg62-turbo \
+        libjxl0.11 \
+        liblcms2-2 \
+        libmanette-0.2-0 \
+        libnotify4 \
+        libnspr4 \
+        libnss3 \
+        libopengl0 \
+        libopus0 \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libpng16-16t64 \
+        libproxy1v5 \
+        libsecret-1-0 \
+        libsoup-3.0-0 \
+        libvpx9 \
+        libavif16 \
+        libwayland-client0 \
+        libwayland-egl1 \
+        libwayland-server0 \
+        libwebp7 \
+        libwebpdemux2 \
+        libwebpmux3 \
+        libwoff1 \
+        libx11-6 \
         libxcomposite1 \
         libxdamage1 \
         libxfixes3 \
         libxrandr2 \
         libxcursor1 \
-        libgbm1 \
-        libgtk-3-0 \
-        libgtk-4-1 \
-        libgstreamer1.0-0 \
-        libgstreamer-plugins-base1.0-0 \
-        libgstreamer-gl1.0-0 \
-        libgstreamer-plugins-bad1.0-0 \
-        libgraphene-1.0-0 \
-        libvulkan1 \
-        libwoff1 \
-        libvpx9 \
-        libopus0 \
-        libwebpdemux2 \
-        libwebpmux3 \
-        libflite1 \
+        libxext6 \
+        libxi6 \
+        libxkbcommon0 \
+        libxml2 \
         libxslt1.1 \
-        libjxl0.11 \
-        libavif16 \
-        libenchant-2-2 \
-        libsecret-1-0 \
-        libhyphen0 \
-        libmanette-0.2-0 \
-        libgles2 \
         libx264-164 \
+        libxrender1 \
+        libx11-xcb1 \
+        libxcb-shm0 \
+        libxcb1 \
+        libxtst6 \
+        libvulkan1 \
     && ln -sf /usr/lib/x86_64-linux-gnu/libx264.so.164 /usr/lib/x86_64-linux-gnu/libx264.so \
     && rm -rf /var/lib/apt/lists/*
 
