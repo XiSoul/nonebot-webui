@@ -120,7 +120,7 @@ docker run -d \
 - `/projects` 给 WebUI 新建实例使用
 - `/external-projects` 给宿主机 / NAS 里已经存在的实例使用
 - `/app/config.json` 与 `/app/project.json` 会被程序写回，不能只读挂载
-- 镜像会默认提示挂载 `/projects` 与 `/external-projects`
+- 新版本镜像不再声明默认 Docker `VOLUME`，避免 NAS / Docker Desktop 自动带出误导性的默认挂载项
 - 如果 NAS 面板自动带出其它旧默认卷（例如 `/data`），建议手动删掉，再按上面这些路径重新配置
 
 ### 路径映射说明
@@ -189,6 +189,9 @@ docker logs nonebot-webui
 因此，登录凭证本身不是直接拿来当 `Authorization: Bearer ...` 用的。
 
 如果后面你在“安全设置”里改成随机 token 模式，新 token 也会继续写到容器日志里。
+
+永久 token 模式下，只要 `/app/config.json` 中的认证字段仍然完整，后续重启不会自动换 token。
+如果配置文件损坏或字段缺失，程序现在会直接报错提示你修复配置，而不是静默重新生成一个新 token。
 
 ### 常用环境变量
 

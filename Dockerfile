@@ -55,8 +55,6 @@ ARG APP_VERSION=0.4.5
 ARG VCS_REF=unknown
 ARG APT_MIRROR
 EXPOSE 18080
-VOLUME ["/projects"]
-VOLUME ["/external-projects"]
 
 # 创建挂载目录
 RUN mkdir -p /opt/nonebot-projects && chmod 777 /opt/nonebot-projects

@@ -348,9 +348,14 @@ def ensure_docker_config() -> Optional[str]:
     raw_config: Dict[str, Any] = {}
     if CONFIG_FILE_PATH.exists():
         try:
-            raw_config = json.loads(CONFIG_FILE_PATH.read_text(encoding="utf-8"))
+            raw_text = CONFIG_FILE_PATH.read_text(encoding="utf-8")
+            if raw_text.strip():
+                raw_config = json.loads(raw_text)
         except (OSError, json.JSONDecodeError):
-            raw_config = {}
+            raise RuntimeError(
+                "Config file exists but is not valid JSON. Refusing to regenerate login credentials automatically. "
+                "Please fix /app/config.json or clear it intentionally before restart."
+            )
 
     has_runtime_defaults = all(
         str(raw_config.get(key) or "").strip() for key in ("base_dir", "host", "port")
@@ -361,6 +366,12 @@ def ensure_docker_config() -> Optional[str]:
     )
     if has_runtime_defaults and has_auth_config:
         return None
+
+    if raw_config and not has_auth_config:
+        raise RuntimeError(
+            "Config file exists but login credential fields are incomplete. Refusing to regenerate token automatically. "
+            "Please restore secret_key/salt/hashed_token or clear /app/config.json intentionally."
+        )
 
     runtime_config, token = _build_runtime_config(raw_config)
     CONFIG_FILE_PATH.write_text(runtime_config.to_json(), encoding="utf-8")
