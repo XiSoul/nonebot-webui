@@ -97,6 +97,30 @@ const clearDeleteCountdown = () => {
   }
 }
 
+const waitForRuntimeState = async (
+  expectedStates: RuntimeState[],
+  {
+    projectId,
+    attempts = 60,
+    interval = 1000
+  }: {
+    projectId: string
+    attempts?: number
+    interval?: number
+  }
+) => {
+  for (let index = 0; index < attempts; index += 1) {
+    await store.loadBots()
+    const nextBot = store.bots[projectId]
+    const nextState = getRuntimeState(nextBot)
+    if (expectedStates.includes(nextState)) {
+      return nextState
+    }
+    await sleep(interval)
+  }
+  return getRuntimeState(store.bots[projectId])
+}
+
 const markStarting = (projectId: string) => {
   pendingRuntimeState.value = 'starting'
 }
@@ -141,8 +165,18 @@ const runBot = async () => {
     toast.add('error', `启动失败，原因：${getErrorMessage(error)}`, '', 5000)
   }
   if (data) {
-    await syncRuntimeState()
-    toast.add('success', `${projectName} 已进入启动流程`, '', 3000)
+    const nextState = await waitForRuntimeState(['running', 'stopped'], {
+      projectId,
+      attempts: 90,
+      interval: 1000
+    })
+    pendingRuntimeState.value = ''
+    if (nextState === 'running') {
+      toast.add('success', `${projectName} 已启动`, '', 3000)
+    } else {
+      await syncRuntimeState()
+      toast.add('warning', `${projectName} 启动流程已结束，但实例未进入运行中，请查看右侧日志`, '', 5000)
+    }
   }
 
   operating.value = false
