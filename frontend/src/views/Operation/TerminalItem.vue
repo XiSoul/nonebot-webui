@@ -47,6 +47,9 @@ const currentBot = ref('')
 const commandInput = ref('')
 const commandSending = ref(false)
 const currentTimeMs = ref(Date.now())
+const terminalCacheKey = computed(() =>
+  store.selectedBot?.project_id ? `terminalCache:${props.mode}:${store.selectedBot.project_id}` : ''
+)
 const MISSING_LOG_STORAGE_ERROR = 'Log storage not found.'
 const PROCESS_FINISHED_MESSAGE = 'Process finished.'
 const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
@@ -202,6 +205,30 @@ const scrollToBottom = async () => {
 const appendLocalLog = async (message: string) => {
   logData.value.push({ message })
   await scrollToBottom()
+}
+
+const restoreCachedLogs = () => {
+  const cacheKey = terminalCacheKey.value
+  if (!cacheKey) return
+  try {
+    const raw = sessionStorage.getItem(cacheKey)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return
+    logData.value = parsed.slice(-400)
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const persistCachedLogs = () => {
+  const cacheKey = terminalCacheKey.value
+  if (!cacheKey) return
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify(logData.value.slice(-400)))
+  } catch {
+    // ignore cache errors
+  }
 }
 
 const fillCommand = (value: string) => {
@@ -521,6 +548,7 @@ const downloadProgressState = computed(() => {
 
 onMounted(async () => {
   loadCustomQuickCommands()
+  restoreCachedLogs()
   currentTimeTimer = setInterval(() => {
     currentTimeMs.value = Date.now()
   }, 1000)
@@ -552,6 +580,7 @@ watch(
     if (parsedData.message === PROCESS_FINISHED_MESSAGE) {
       await syncSelectedBotStatus()
     }
+    persistCachedLogs()
     await scrollToBottom()
   }
 )
@@ -579,7 +608,7 @@ watch(
     const nextLogKey = await resolveLogKey(projectId)
     if (nextLogKey !== currentBot.value) {
       currentBot.value = nextLogKey
-      logData.value = []
+      restoreCachedLogs()
       await getHistoryLogs(nextLogKey)
       if (props.mode === 'shell' && !isRuntimeActive(store.selectedBot)) {
         await ensureStoppedProjectTerminal(projectId)
@@ -626,6 +655,14 @@ watch(
       await getHistoryLogs(logKey)
     }
   }
+)
+
+watch(
+  () => logData.value,
+  () => {
+    persistCachedLogs()
+  },
+  { deep: true }
 )
 
 const retry = () => {
