@@ -116,6 +116,7 @@ class SecuritySettingsResponse(BaseModel):
     token_hint: str = ""
     token_mode: str = "permanent"
     random_token_expire_hours: int = 24
+    session_token_expire_hours: int = 24
     token_expires_at: int = 0
 
 
@@ -125,6 +126,7 @@ class SecuritySettingsUpdateRequest(BaseModel):
     service_port: int = 18080
     token_mode: str = "permanent"
     random_token_expire_hours: int = 24
+    session_token_expire_hours: int = 24
 
 
 class SecuritySettingsUpdateResponse(BaseModel):
@@ -136,4 +138,5 @@ class SecuritySettingsUpdateResponse(BaseModel):
     message: str = ""
     token_mode: str = "permanent"
     random_token_expire_hours: int = 24
+    session_token_expire_hours: int = 24
     token_expires_at: int = 0

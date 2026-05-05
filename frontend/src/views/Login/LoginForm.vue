@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { client, AuthService } from '@/client/api'
-import { setAuthToken } from '@/client/auth'
+import { getRememberLogin, setAuthToken } from '@/client/auth'
 import { createDebugApiBaseUrl, getDefaultApiBaseUrl } from '@/client/base'
 import { getErrorMessage } from '@/client/utils'
 import router from '@/router'
@@ -18,6 +18,7 @@ const toast = useToastStore()
 const nonebotStore = useNoneBotStore()
 
 const token = ref('')
+const rememberLogin = ref(false)
 const isDebug = ref(false)
 const host = ref('')
 const port = ref('')
@@ -51,7 +52,7 @@ const login = async () => {
   }
 
   if (data?.detail) {
-    setAuthToken(data.detail)
+    setAuthToken(data.detail, rememberLogin.value)
     client.interceptors.request.use((request: ClientRequest) => {
       request.headers.set('Authorization', `Bearer ${data.detail}`)
       return request
@@ -61,6 +62,10 @@ const login = async () => {
     toast.add('success', '登录成功', '', 5000)
   }
 }
+
+onMounted(() => {
+  rememberLogin.value = getRememberLogin()
+})
 </script>
 
 <template>
@@ -76,13 +81,19 @@ const login = async () => {
             required
           />
           <div class="label">
-            <span class="label-text">开发模式</span>
-            <input
-              type="checkbox"
-              class="checkbox checkbox-xs"
-              :checked="isDebug"
-              @click="isDebug = !isDebug"
-            />
+            <div class="flex items-center gap-2">
+              <span class="label-text">记住登录</span>
+              <input v-model="rememberLogin" type="checkbox" class="checkbox checkbox-xs" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="label-text">开发模式</span>
+              <input
+                type="checkbox"
+                class="checkbox checkbox-xs"
+                :checked="isDebug"
+                @click="isDebug = !isDebug"
+              />
+            </div>
           </div>
         </label>
 

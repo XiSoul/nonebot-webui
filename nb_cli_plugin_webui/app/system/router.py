@@ -27,6 +27,7 @@ from nb_cli_plugin_webui.app.auth.utils import (
     get_login_token_expires_at,
     normalize_login_token_mode,
     normalize_random_token_expire_hours,
+    normalize_session_token_expire_hours,
 )
 
 from .schemas import (
@@ -325,6 +326,9 @@ async def get_security_settings() -> GenericResponse[SecuritySettingsResponse]:
     random_token_expire_hours = normalize_random_token_expire_hours(
         getattr(Config, "login_token_random_expire_hours", 24)
     )
+    session_token_expire_hours = normalize_session_token_expire_hours(
+        getattr(Config, "session_token_expire_hours", 24)
+    )
     is_docker = is_docker_runtime()
     return GenericResponse(
         detail=SecuritySettingsResponse(
@@ -335,6 +339,7 @@ async def get_security_settings() -> GenericResponse[SecuritySettingsResponse]:
             token_hint=_build_token_hint(token_mode, is_docker),
             token_mode=token_mode,
             random_token_expire_hours=random_token_expire_hours,
+            session_token_expire_hours=session_token_expire_hours,
             token_expires_at=get_login_token_expires_at() if token_mode == "random" else 0,
         )
     )
@@ -351,6 +356,9 @@ async def update_security_settings(
     next_token_mode = normalize_login_token_mode(data.token_mode)
     next_random_token_expire_hours = normalize_random_token_expire_hours(
         data.random_token_expire_hours
+    )
+    next_session_token_expire_hours = normalize_session_token_expire_hours(
+        data.session_token_expire_hours
     )
     current_token_mode = normalize_login_token_mode(
         getattr(Config, "login_token_mode", "permanent")
@@ -422,6 +430,7 @@ async def update_security_settings(
     current_port = _normalize_service_port(Config.port)
     port_changed = current_port != next_port
     Config.port = str(next_port)
+    Config.session_token_expire_hours = next_session_token_expire_hours
     if is_docker_runtime():
         Config.host = DEFAULT_DOCKER_HOST
 
@@ -454,6 +463,7 @@ async def update_security_settings(
             message=message,
             token_mode=next_token_mode,
             random_token_expire_hours=next_random_token_expire_hours,
+            session_token_expire_hours=next_session_token_expire_hours,
             token_expires_at=get_login_token_expires_at()
             if next_token_mode == "random"
             else 0,

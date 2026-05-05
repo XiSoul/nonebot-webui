@@ -21,6 +21,7 @@ const settings = ref<SecuritySettings | null>(null)
 const servicePort = ref<string | number>('18080')
 const tokenMode = ref<TokenMode>('permanent')
 const randomTokenExpireHours = ref<string | number>('24')
+const sessionTokenExpireHours = ref<string | number>('24')
 const currentToken = ref('')
 const newToken = ref('')
 const confirmToken = ref('')
@@ -63,16 +64,23 @@ const currentPort = computed(() => settings.value?.service_port ?? 18080)
 const currentHost = computed(() => settings.value?.service_host || '0.0.0.0')
 const currentTokenMode = computed<TokenMode>(() => settings.value?.token_mode || 'permanent')
 const currentRandomTokenExpireHours = computed(() => settings.value?.random_token_expire_hours ?? 24)
+const currentSessionTokenExpireHours = computed(() => settings.value?.session_token_expire_hours ?? 24)
 const currentTokenExpiresAt = computed(() => settings.value?.token_expires_at ?? 0)
 
 const normalizedPort = computed(() => String(servicePort.value ?? '').trim())
 const normalizedRandomTokenExpireHours = computed(() =>
   String(randomTokenExpireHours.value ?? '').trim()
 )
+const normalizedSessionTokenExpireHours = computed(() =>
+  String(sessionTokenExpireHours.value ?? '').trim()
+)
 const normalizedCurrentToken = computed(() => currentToken.value.trim())
 const normalizedNewToken = computed(() => newToken.value.trim())
 const normalizedConfirmToken = computed(() => confirmToken.value.trim())
 const hasPortChange = computed(() => normalizedPort.value !== String(currentPort.value))
+const hasSessionTokenExpireHoursChange = computed(
+  () => normalizedSessionTokenExpireHours.value !== String(currentSessionTokenExpireHours.value)
+)
 
 const randomTokenHoursChanged = computed(() => {
   if (!isRandomMode.value) return false
@@ -161,12 +169,13 @@ const loadSettings = async () => {
   servicePort.value = String(data.service_port || 18080)
   tokenMode.value = data.token_mode || 'permanent'
   randomTokenExpireHours.value = String(data.random_token_expire_hours || 24)
+  sessionTokenExpireHours.value = String(data.session_token_expire_hours || 24)
 }
 
 const validateForm = () => {
   const trimmedPort = normalizedPort.value
 
-  if (!hasTokenChange.value && !hasPortChange.value) {
+  if (!hasTokenChange.value && !hasPortChange.value && !hasSessionTokenExpireHoursChange.value) {
     toast.add('warning', '当前没有可保存的变更', '', 3000)
     return false
   }
@@ -203,6 +212,12 @@ const validateForm = () => {
     }
   }
 
+  const parsedSessionHours = Number(normalizedSessionTokenExpireHours.value)
+  if (!Number.isInteger(parsedSessionHours) || parsedSessionHours < 1 || parsedSessionHours > 720) {
+    toast.add('warning', '登录会话有效期必须是 1 到 720 小时之间的整数', '', 4000)
+    return false
+  }
+
   const parsedPort = Number(trimmedPort)
   if (!Number.isInteger(parsedPort) || parsedPort < 1024 || parsedPort > 49151) {
     toast.add('warning', '服务端口必须是 1024 到 49151 之间的整数', '', 4000)
@@ -221,7 +236,8 @@ const applySettings = async () => {
     new_token: tokenMode.value === 'permanent' ? normalizedNewToken.value : '',
     service_port: Number(normalizedPort.value),
     token_mode: tokenMode.value,
-    random_token_expire_hours: Number(normalizedRandomTokenExpireHours.value || 24)
+    random_token_expire_hours: Number(normalizedRandomTokenExpireHours.value || 24),
+    session_token_expire_hours: Number(normalizedSessionTokenExpireHours.value || 24)
   })
   saving.value = false
 
@@ -247,16 +263,19 @@ const applySettings = async () => {
       token_hint: '',
       token_mode: tokenMode.value,
       random_token_expire_hours: Number(normalizedRandomTokenExpireHours.value || 24),
+      session_token_expire_hours: Number(normalizedSessionTokenExpireHours.value || 24),
       token_expires_at: 0
     }),
     service_port: nextPort,
     token_mode: data.token_mode,
     random_token_expire_hours: data.random_token_expire_hours,
+    session_token_expire_hours: data.session_token_expire_hours,
     token_expires_at: data.token_expires_at
   }
   servicePort.value = String(nextPort)
   tokenMode.value = data.token_mode
   randomTokenExpireHours.value = String(data.random_token_expire_hours || 24)
+  sessionTokenExpireHours.value = String(data.session_token_expire_hours || 24)
   resetTokenInputs()
 
   if (tokenChanged) {
@@ -326,12 +345,25 @@ onMounted(() => {
     <div v-if="loading" class="text-sm opacity-70">加载中...</div>
 
     <div v-else class="flex flex-col gap-4">
-      <div class="alert bg-base-100 border border-base-content/10">
-        <span class="material-symbols-outlined text-primary">shield_lock</span>
-        <div class="text-sm leading-6">
-          <div>默认推荐使用永久 token，永久 token 不自动过期，需要你手动修改。</div>
-          <div>随机 token 不会在页面明文展示，只会写入 Docker 日志；过期后系统会自动生成新的随机 token 并再次写入日志。</div>
-          <div>{{ settings?.token_hint || '修改登录凭证前，请先输入当前登录凭证。' }}</div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="alert bg-base-100 border border-base-content/10 items-start">
+          <span class="material-symbols-outlined text-primary mt-0.5">key</span>
+          <div class="text-sm leading-6">
+            <div class="font-medium">登录凭证时效</div>
+            <div>永久 token 不自动过期，需要你手动修改。</div>
+            <div>随机 token 只会写入 Docker 日志，过期后系统会自动生成新的随机 token 并再次写入日志。</div>
+            <div>{{ settings?.token_hint || '修改登录凭证前，请先输入当前登录凭证。' }}</div>
+          </div>
+        </div>
+
+        <div class="alert bg-base-100 border border-base-content/10 items-start">
+          <span class="material-symbols-outlined text-primary mt-0.5">schedule</span>
+          <div class="text-sm leading-6">
+            <div class="font-medium">会话时效</div>
+            <div>JWT 登录会话默认 24 小时，到期后需要重新使用登录凭证换取新的会话。</div>
+            <div>“记住登录”只决定浏览器关闭后是否保留会话 token，不会绕过 JWT 自身的过期时间。</div>
+            <div>会话时长修改后，只影响之后新登录生成的会话。</div>
+          </div>
         </div>
       </div>
 
@@ -507,6 +539,33 @@ onMounted(() => {
             </div>
           </div>
         </template>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,320px),1fr] gap-4 items-start">
+        <label class="form-control w-full">
+          <div class="label py-1">
+            <span class="label-text">登录会话有效期</span>
+          </div>
+          <input
+            v-model="sessionTokenExpireHours"
+            type="text"
+            inputmode="numeric"
+            class="input input-sm input-bordered font-mono"
+            placeholder="24"
+          />
+          <div class="label py-1">
+            <span class="label-text-alt opacity-70">单位：小时，范围 1 到 720。只影响之后新登录生成的会话。</span>
+          </div>
+        </label>
+
+        <div class="alert bg-base-100 border border-base-content/10 text-sm leading-6">
+          <span class="material-symbols-outlined text-primary">schedule</span>
+          <div>
+            <div>当前登录凭证决定“能不能登录”，JWT 会话决定“登录后能保持多久”。</div>
+            <div>修改这里不会立刻延长已经签发出去的旧会话，需要下次重新登录后才按新的时长生效。</div>
+            <div>当前配置：{{ currentSessionTokenExpireHours }} 小时</div>
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,320px),1fr] gap-4 items-start">

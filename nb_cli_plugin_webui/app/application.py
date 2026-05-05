@@ -3,9 +3,11 @@ from pathlib import Path
 
 from starlette.types import Send, Scope, Receive
 from fastapi import FastAPI, HTTPException, status
+from fastapi.security.utils import get_authorization_scheme_param
 from starlette.responses import Response, JSONResponse
 from fastapi.staticfiles import StaticFiles as BaseStaticFiles
 from starlette.exceptions import HTTPException as StarlettleHTTPException
+from starlette.middleware.cors import CORSMiddleware
 
 from nb_cli_plugin_webui import get_version
 from nb_cli_plugin_webui.app.backup.service import configure_backup_scheduler
@@ -16,6 +18,8 @@ from nb_cli_plugin_webui.app.utils.global_log import (
 
 from .config import Config
 from .logging import logger as log
+from .utils.security import jwt
+from .auth.utils import ensure_login_token_is_active
 from .utils.scheduler import scheduler
 from .utils.container import (
     apply_container_runtime_config,
@@ -27,6 +31,15 @@ from .process.service import ProjectShellSessionManager
 from .handlers import driver_store_manager, plugin_store_manager, adapter_store_manager
 
 STATIC_PATH = Path(__file__).parent.parent / "dist"
+AUTH_ROUTES = ["/api", "/v1"]
+PASS_PATHS = [
+    "/api/v1/auth/login",
+    "/api/v1/auth/verify",
+    "/v1/auth/login",
+    "/v1/auth/verify",
+    "/api/docs",
+    "/api/docs/openapi.json",
+]
 
 
 class StaticFiles(BaseStaticFiles):
@@ -82,6 +95,37 @@ app = FastAPI(openapi_url="")
 app.include_router(api_router, prefix="/v1")
 app.mount("/api", app=api)
 app.mount("/", app=frontend)
+
+
+@app.middleware("http")
+async def auth(request, call_next):
+    request_path = request.url.path
+
+    if request_path in PASS_PATHS:
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization")
+    _, param = get_authorization_scheme_param(authorization)
+    if any(request_path.startswith(route) for route in AUTH_ROUTES):
+        secret_key = Config.secret_key.get_secret_value()
+        try:
+            ensure_login_token_is_active()
+            jwt.verify_and_read_jwt(param, secret_key)
+        except Exception as err:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN, content={"detail": str(err)}
+            )
+
+    return await call_next(request)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=Config.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")

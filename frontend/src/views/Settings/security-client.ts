@@ -8,6 +8,7 @@ export type SecuritySettings = {
   token_hint: string
   token_mode: 'permanent' | 'random'
   random_token_expire_hours: number
+  session_token_expire_hours: number
   token_expires_at: number
 }
 
@@ -20,6 +21,7 @@ export type SecuritySettingsUpdateResult = {
   message: string
   token_mode: 'permanent' | 'random'
   random_token_expire_hours: number
+  session_token_expire_hours: number
   token_expires_at: number
 }
 
@@ -66,6 +68,7 @@ export const updateSecuritySettings = async (payload: {
   service_port: number
   token_mode: 'permanent' | 'random'
   random_token_expire_hours: number
+  session_token_expire_hours: number
 }) => {
   const response = await fetch(generateURLForWebUI('/v1/system/security'), {
     method: 'PUT',

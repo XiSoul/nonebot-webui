@@ -97,6 +97,10 @@ class AppConfig(BaseModel):
         default=24,
         description="How many hours a random login token remains valid.",
     )
+    session_token_expire_hours: int = Field(
+        default=24,
+        description="How many hours a JWT session remains valid after login.",
+    )
 
     allowed_origins: list = Field(
         default=["*"],

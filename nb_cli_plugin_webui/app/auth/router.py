@@ -7,7 +7,7 @@ from nb_cli_plugin_webui.app.utils.security import jwt, salt
 
 from .exceptions import TokenInvalid
 from .schemas import LoginRequest, VerifyRequest
-from .utils import ensure_login_token_is_active
+from .utils import ensure_login_token_is_active, normalize_session_token_expire_hours
 
 router = APIRouter(tags=["auth"])
 
@@ -34,7 +34,14 @@ async def auth_token(data: LoginRequest) -> GenericResponse[str]:
         raise TokenInvalid()
 
     secret_key = Config.secret_key.get_secret_value()
-    jwt_token = jwt.create_access_for_header(data.mark, secret_key)
+    session_token_expire_hours = normalize_session_token_expire_hours(
+        getattr(Config, "session_token_expire_hours", 24)
+    )
+    jwt_token = jwt.create_access_for_header(
+        data.mark,
+        secret_key,
+        expire_seconds=session_token_expire_hours * 60 * 60,
+    )
     return GenericResponse(detail=jwt_token)
 
 

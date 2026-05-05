@@ -34,6 +34,11 @@ type QuickCommand = {
   command: string
 }
 
+type RecentCommand = {
+  id: string
+  command: string
+}
+
 const store = useNoneBotStore()
 const customStore = useCustomStore()
 const toast = useToastStore()
@@ -55,11 +60,20 @@ const PROCESS_FINISHED_MESSAGE = 'Process finished.'
 const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
 const PROCESS_NOT_FOUND_ERROR = 'Process not found.'
 const QUICK_COMMANDS_STORAGE_KEY = 'terminalQuickCommands:v1'
+const RECENT_COMMANDS_STORAGE_KEY = 'terminalRecentCommands:v1'
 const customQuickCommands = ref<QuickCommand[]>([])
+const recentCommands = ref<RecentCommand[]>([])
 const newQuickCommandLabel = ref('')
 const newQuickCommandCommand = ref('')
 let currentTimeTimer: ReturnType<typeof setInterval> | null = null
 const currentLogKey = ref('')
+const selectedProjectName = computed(() => store.selectedBot?.project_name || '未选择实例')
+const selectedProjectDir = computed(() => store.selectedBot?.project_dir || '未连接项目目录')
+const selectedProjectDirShort = computed(() => {
+  const dir = selectedProjectDir.value
+  if (dir.length <= 52) return dir
+  return `...${dir.slice(-49)}`
+})
 
 const resolveLogKey = async (projectId?: string) => {
   const id = projectId ?? store.selectedBot?.project_id
@@ -262,6 +276,42 @@ const loadCustomQuickCommands = () => {
   }
 }
 
+const saveRecentCommands = () => {
+  try {
+    localStorage.setItem(RECENT_COMMANDS_STORAGE_KEY, JSON.stringify(recentCommands.value))
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const loadRecentCommands = () => {
+  try {
+    const raw = localStorage.getItem(RECENT_COMMANDS_STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return
+    recentCommands.value = parsed
+      .map((item) => ({
+        id: String(item?.id ?? `${Date.now()}-${Math.random()}`),
+        command: String(item?.command ?? '').trim()
+      }))
+      .filter((item) => item.command)
+      .slice(0, 8)
+  } catch {
+    // ignore cache errors
+  }
+}
+
+const pushRecentCommand = (command: string) => {
+  const normalized = command.trim()
+  if (!normalized) return
+  recentCommands.value = [
+    { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, command: normalized },
+    ...recentCommands.value.filter((item) => item.command !== normalized)
+  ].slice(0, 8)
+  saveRecentCommands()
+}
+
 const closeQuickCommandModal = () => {
   quickCommandModal.value?.close()
   newQuickCommandLabel.value = ''
@@ -427,6 +477,7 @@ const sendCommand = async () => {
 
   const sent = await writeToProcess(`${command}\n`, `> ${command}`)
   if (sent) {
+    pushRecentCommand(command)
     commandInput.value = ''
   }
 }
@@ -491,6 +542,16 @@ const canInterrupt = computed(
     (!runtimeActive.value || status.value === 'OPEN') &&
     !commandSending.value
 )
+const terminalStatusTone = computed(() => {
+  if (!store.selectedBot) return 'badge-ghost'
+  if (status.value === 'OPEN') return 'badge-success text-base-100'
+  return runtimeActive.value ? 'badge-warning' : 'badge-error text-base-100'
+})
+const terminalStatusText = computed(() => {
+  if (!store.selectedBot) return '未选择实例'
+  if (status.value === 'OPEN') return '已连接'
+  return runtimeActive.value ? '等待重连' : '未连接'
+})
 const terminalModeLabel = computed(() => {
   if (!store.selectedBot) return '未选择实例'
   if (props.mode === 'runtime') return '实例运行日志'
@@ -499,6 +560,32 @@ const terminalModeLabel = computed(() => {
   }
   return 'Shell 会话'
 })
+const terminalSessionLabel = computed(() => {
+  if (!store.selectedBot) return 'Detached'
+  if (props.mode === 'runtime') return 'Runtime Stream'
+  return runtimeActive.value ? 'Parallel Shell' : 'Maintenance Shell'
+})
+const terminalSummary = computed(() => {
+  if (!store.selectedBot) return '请先选择一个实例，再附着日志流或维护 Shell。'
+  if (props.mode === 'runtime') {
+    return '这里专注观察实例输出、启动过程和异常日志，不直接发送维护命令。'
+  }
+  if (runtimeActive.value) {
+    return '实例运行中，当前 Shell 会并行附着，适合执行依赖修复、代理排查和浏览器安装。'
+  }
+  return '实例停止时会维持一个常驻维护 Shell，适合手动执行 pip、playwright install、nb run 等命令。'
+})
+const terminalMetrics = computed(() => [
+  { label: '实例', value: selectedProjectName.value },
+  { label: '模式', value: terminalSessionLabel.value },
+  { label: '日志', value: `${logData.value.length} 行` }
+])
+const commandDeck = computed<QuickCommand[]>(() => [
+  { id: 'builtin-pip', label: '安装依赖', command: 'python -m pip install -U ' },
+  { id: 'builtin-playwright', label: '装 Chromium', command: 'python -m playwright install chromium' },
+  { id: 'builtin-nb-run', label: 'nb run', command: 'nb run' },
+  ...customQuickCommands.value
+])
 const commandPlaceholder = computed(() => {
   if (props.mode !== 'shell') return '当前页面仅展示实例运行日志'
   if (!store.selectedBot) return '请先选择实例'
@@ -548,6 +635,7 @@ const downloadProgressState = computed(() => {
 
 onMounted(async () => {
   loadCustomQuickCommands()
+  loadRecentCommands()
   restoreCachedLogs()
   currentTimeTimer = setInterval(() => {
     currentTimeMs.value = Date.now()
@@ -724,51 +812,76 @@ const retry = () => {
     </dialog>
 
     <div class="flex flex-col gap-5">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div class="flex min-w-0 flex-1 flex-col gap-3">
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="text-lg font-semibold">Terminal Output</span>
-            <div class="badge badge-sm badge-ghost font-normal">
-              {{ terminalModeLabel }}
+      <div class="rounded-[26px] border border-base-content/10 bg-base-100/70 p-4 shadow-sm backdrop-blur">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="flex min-w-0 flex-1 flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-lg font-semibold">Terminal Workspace</span>
+              <div class="badge badge-sm badge-ghost font-normal">
+                {{ terminalModeLabel }}
+              </div>
+              <div class="badge badge-sm font-normal" :class="terminalStatusTone">
+                {{ terminalStatusText }}
+              </div>
+              <div
+                v-if="downloadProgressState"
+                :class="[
+                  'badge badge-sm font-normal',
+                  downloadProgressState.stalled ? 'badge-warning' : 'badge-info text-base-100'
+                ]"
+              >
+                {{ downloadProgressState.label }} · {{ downloadProgressState.percentText }}
+                <template v-if="downloadProgressState.speedText">
+                  · {{ downloadProgressState.speedText }}
+                </template>
+                · {{ downloadProgressState.ageText }}
+              </div>
             </div>
-            <div
-              v-if="status === 'OPEN'"
-              class="badge badge-sm badge-success font-normal text-base-100"
-            >
-              Connected
+
+            <div class="rounded-2xl border border-base-content/8 bg-base-200/70 px-4 py-3">
+              <div class="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-base-content/45">
+                <span>Session</span>
+                <span class="rounded-full bg-base-content/10 px-2 py-1 font-medium tracking-[0.16em] text-base-content/70">
+                  {{ terminalSessionLabel }}
+                </span>
+              </div>
+              <div class="mt-3 flex flex-col gap-2">
+                <div class="text-sm font-medium text-base-content/85">
+                  {{ selectedProjectName }}
+                </div>
+                <div class="font-mono text-xs text-base-content/55">
+                  {{ selectedProjectDirShort }}
+                </div>
+                <p class="text-sm leading-6 text-base-content/68">
+                  {{ terminalSummary }}
+                </p>
+              </div>
             </div>
-            <div v-else class="badge badge-sm badge-error font-normal text-base-100">Disconnected</div>
-            <div
-              v-if="downloadProgressState"
-              :class="[
-                'badge badge-sm font-normal',
-                downloadProgressState.stalled ? 'badge-warning' : 'badge-info text-base-100'
-              ]"
-            >
-              {{ downloadProgressState.label }} · {{ downloadProgressState.percentText }}
-              <template v-if="downloadProgressState.speedText">
-                · {{ downloadProgressState.speedText }}
-              </template>
-              · {{ downloadProgressState.ageText }}
+
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div
+                v-for="metric in terminalMetrics"
+                :key="metric.label"
+                class="rounded-2xl border border-base-content/8 bg-base-100 px-4 py-3"
+              >
+                <div class="text-[11px] uppercase tracking-[0.18em] text-base-content/45">
+                  {{ metric.label }}
+                </div>
+                <div class="mt-2 text-sm font-medium text-base-content/82">
+                  {{ metric.value }}
+                </div>
+              </div>
             </div>
           </div>
 
-          <p class="max-w-3xl text-sm leading-6 text-base-content/68">
-            {{
-              props.mode === 'runtime'
-                ? '这里只展示实例运行过程中的输出和状态变化，适合观察启动、停止、报错和插件运行日志。'
-                : '停止状态下这里会维护一个常驻 Shell；运行中的实例则会额外保留并行 Shell，方便你执行依赖修复、代理排查和浏览器安装。'
-            }}
-          </p>
-        </div>
-
-        <div class="flex items-center justify-end gap-2">
-          <button
-            :class="{ 'btn btn-sm btn-ghost': true, hidden: status === 'OPEN' }"
-            @click="retry()"
-          >
-            Retry
-          </button>
+          <div class="flex items-center justify-end gap-2">
+            <button
+              :class="{ 'btn btn-sm btn-ghost': true, hidden: status === 'OPEN' }"
+              @click="retry()"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
 
@@ -889,32 +1002,57 @@ const retry = () => {
         class="flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 backdrop-blur"
         @submit.prevent="sendCommand"
       >
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">常用命令</span>
-            <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('python -m pip install -U ')">
-              pip 安装
-            </button>
-            <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand('nb run')">nb run</button>
-            <button class="btn btn-xs btn-outline btn-primary" type="button" @click="openQuickCommandModal()">
-              +
-            </button>
-            <template v-for="item in customQuickCommands" :key="item.id">
-              <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand(item.command)">
-                {{ item.label }}
+          <div class="flex flex-col gap-3 rounded-2xl border border-base-content/8 bg-base-200/70 p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Command Deck</span>
+              <button class="btn btn-xs btn-outline btn-primary" type="button" @click="openQuickCommandModal()">
+                + 新增
               </button>
-              <button class="btn btn-xs btn-ghost px-2" type="button" title="删除快捷命令" @click="removeQuickCommand(item.id)">
-                ×
-              </button>
-            </template>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <template v-for="item in commandDeck" :key="item.id">
+                <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand(item.command)">
+                  {{ item.label }}
+                </button>
+                <button
+                  v-if="!item.id.startsWith('builtin-')"
+                  class="btn btn-xs btn-ghost px-2"
+                  type="button"
+                  title="删除快捷命令"
+                  @click="removeQuickCommand(item.id)"
+                >
+                  ×
+                </button>
+              </template>
+            </div>
+            <div v-if="recentCommands.length" class="flex flex-col gap-2">
+              <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Recent</span>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="item in recentCommands"
+                  :key="item.id"
+                  class="btn btn-xs btn-outline"
+                  type="button"
+                  @click="fillCommand(item.command)"
+                >
+                  {{ item.command }}
+                </button>
+              </div>
+            </div>
           </div>
 
         <div class="flex flex-col gap-3 lg:flex-row">
-          <input
-            v-model="commandInput"
-            class="input input-sm input-bordered flex-1 font-mono"
-            :placeholder="commandPlaceholder"
-            :disabled="!canWriteCommand"
-          />
+          <div class="flex flex-1 items-stretch rounded-2xl border border-base-content/10 bg-base-300/40">
+            <div class="flex items-center border-r border-base-content/10 px-3 font-mono text-xs text-base-content/45">
+              $
+            </div>
+            <input
+              v-model="commandInput"
+              class="input input-sm h-auto flex-1 border-0 bg-transparent font-mono focus:outline-none"
+              :placeholder="commandPlaceholder"
+              :disabled="!canWriteCommand"
+            />
+          </div>
           <div class="flex gap-2">
             <button
               class="btn btn-sm btn-primary text-base-100"

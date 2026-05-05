@@ -8,7 +8,7 @@ from .schemas import JWTMeta
 
 JWT_SUBJECT: str = "access"
 ALGORITHM: str = "HS256"
-EXPIRE_SECONDS: int = 60 * 60 * 24
+DEFAULT_EXPIRE_SECONDS: int = 60 * 60 * 24
 
 
 def create_jwt(
@@ -20,11 +20,13 @@ def create_jwt(
     return jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
 
 
-def create_access_for_header(detail: str, secret_key: str) -> str:
+def create_access_for_header(
+    detail: str, secret_key: str, expire_seconds: int = DEFAULT_EXPIRE_SECONDS
+) -> str:
     return create_jwt(
         payload={"token": detail},
         secret_key=secret_key,
-        expire_seconds=timedelta(seconds=EXPIRE_SECONDS),
+        expire_seconds=timedelta(seconds=expire_seconds),
     )
 
 

@@ -25,6 +25,14 @@ def normalize_random_token_expire_hours(value: object) -> int:
     return min(720, max(1, hours))
 
 
+def normalize_session_token_expire_hours(value: object) -> int:
+    try:
+        hours = int(value)
+    except Exception:
+        return 24
+    return min(24 * 30, max(1, hours))
+
+
 def get_login_token_expires_at() -> int:
     try:
         return int(getattr(Config, "login_token_expires_at", 0) or 0)
