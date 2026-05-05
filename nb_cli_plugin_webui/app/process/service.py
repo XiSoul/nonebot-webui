@@ -24,6 +24,7 @@ from nb_cli_plugin_webui.app.handlers.process import (
     ProcessNotRunning,
 )
 from nb_cli_plugin_webui.app.utils.bot_proxy import get_bot_proxy_env, get_pip_proxy_env
+from nb_cli_plugin_webui.app.utils.python_env import resolve_project_python_path
 
 from .exceptions import DriverNotFound, AdapterNotFound
 
@@ -142,7 +143,7 @@ def _pick_available_port(project_id: str) -> int:
 
 
 def _load_project_env_data(project_meta, project_dir: Path) -> dict:
-    env_filename = str(getattr(project_meta, "use_env", "") or "").strip()
+    env_filename = project_service.resolve_project_use_env(project_dir)
     if not env_filename:
         return {}
 
@@ -328,6 +329,33 @@ def _apply_htmlrender_download_env(env: dict, project_meta, project_dir: Path) -
         )
 
 
+def _detect_project_virtualenv(project_dir: Path) -> Tuple[Optional[Path], Optional[Path]]:
+    resolved_python_path = str(resolve_project_python_path(project_dir) or "").strip()
+    if resolved_python_path:
+        python_path = Path(resolved_python_path).expanduser()
+        try:
+            python_path = python_path.resolve()
+        except Exception:
+            python_path = python_path.absolute()
+
+        if python_path.is_file():
+            bin_dir = python_path.parent
+            venv_root = python_path.parent.parent
+            return venv_root, bin_dir
+
+    candidate_env_dirs = (
+        project_dir / ".venv",
+        project_dir / "venv",
+    )
+    for venv_root in candidate_env_dirs:
+        for bin_name in ("Scripts", "bin"):
+            bin_dir = venv_root / bin_name
+            if bin_dir.is_dir():
+                return venv_root, bin_dir
+
+    return None, None
+
+
 def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[dict, bool]:
     project_dir = Path(project_meta.project_dir)
     if pip_safe:
@@ -339,15 +367,17 @@ def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[
         socks_proxy_disabled = False
     env["TERM"] = "xterm-color"
 
-    if sys.platform == "win32":
-        venv_path = project_dir / Path(".venv/Scripts")
-        env["PATH"] = f"{venv_path.absolute()};{env.get('PATH', '')}"
-    else:
-        venv_path = project_dir / Path(".venv/bin")
-        env["PATH"] = f"{venv_path.absolute()}:{env.get('PATH', '')}"
+    virtual_env, venv_bin_dir = _detect_project_virtualenv(project_dir)
+    if venv_bin_dir and venv_bin_dir.is_dir():
+        current_path = str(env.get("PATH") or "")
+        venv_bin_path = str(venv_bin_dir.absolute())
+        env["PATH"] = (
+            f"{venv_bin_path}{os.pathsep}{current_path}"
+            if current_path
+            else venv_bin_path
+        )
 
-    virtual_env = project_dir / ".venv"
-    if virtual_env.is_dir():
+    if virtual_env and virtual_env.is_dir():
         env["VIRTUAL_ENV"] = str(virtual_env.absolute())
 
     _apply_htmlrender_browser_path(env, project_meta, project_dir)
@@ -357,12 +387,8 @@ def build_project_runtime_env(project_meta, *, pip_safe: bool = False) -> Tuple[
 
 
 def _get_project_python_path(project_dir: Path) -> str:
-    if sys.platform == "win32":
-        python_path = project_dir / ".venv" / "Scripts" / "python.exe"
-    else:
-        python_path = project_dir / ".venv" / "bin" / "python"
-
-    return str(python_path.absolute()) if python_path.exists() else "python"
+    python_path = str(resolve_project_python_path(project_dir) or "").strip()
+    return python_path or "python"
 
 
 def _build_shell_bootstrap_script(
@@ -968,7 +994,8 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     project_dir = Path(project_meta.project_dir)
     env, _ = build_project_runtime_env(project_meta)
     log_storage = ensure_project_runtime_log_storage(project_meta.project_id)
-    env_file = project_dir / project_meta.use_env
+    runtime_env_name = project_service.resolve_project_use_env(project_dir)
+    env_file = project_dir / runtime_env_name
     env_data = dotenv_values(env_file) if env_file.exists() else {}
     configured_host = str(env_data.get("HOST", "")).strip()
     configured_port = project_service.parse_project_port(env_data.get("PORT"))
@@ -988,11 +1015,11 @@ async def run_nonebot_project(project: project_service.NoneBotProjectManager):
     if run_port:
         env["PORT"] = str(run_port)
         if str(env_data.get("PORT", "")).strip() != str(run_port):
-            project.write_to_env(project_meta.use_env, "PORT", str(run_port))
+            project.write_to_env(runtime_env_name, "PORT", str(run_port))
     host = configured_host or "0.0.0.0"
     env["HOST"] = host
     if str(env_data.get("HOST", "")).strip() != host:
-        project.write_to_env(project_meta.use_env, "HOST", host)
+        project.write_to_env(runtime_env_name, "HOST", host)
 
     await _ensure_htmlrender_browser_ready(
         project_meta,

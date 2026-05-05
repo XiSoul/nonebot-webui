@@ -296,8 +296,26 @@ async def _get_installed_distribution_names(
 
 
 def _venv_python_path(venv_path: Path) -> Path:
-    if os.name == "nt":
-        return venv_path / "Scripts" / "python.exe"
+    resolved_python_path = str(resolve_project_python_path(venv_path.parent) or "").strip()
+    if resolved_python_path:
+        candidate = Path(resolved_python_path).expanduser()
+        try:
+            candidate = candidate.resolve()
+        except Exception:
+            candidate = candidate.absolute()
+        if candidate.is_file():
+            return candidate
+
+    for relative_path in (
+        Path("Scripts") / "python.exe",
+        Path("bin") / "python",
+        Path("Scripts") / "python",
+        Path("bin") / "python3",
+    ):
+        candidate = venv_path / relative_path
+        if candidate.is_file():
+            return candidate
+
     return venv_path / "bin" / "python"
 
 

@@ -9,17 +9,23 @@ def _safe_resolve(path: Path) -> Path:
         return path.expanduser().absolute()
 
 
+def _python_relative_candidates() -> tuple[Path, ...]:
+    return (
+        Path("Scripts") / "python.exe",
+        Path("bin") / "python",
+        Path("Scripts") / "python",
+        Path("bin") / "python3",
+    )
+
+
 def resolve_project_python_path(project_dir: Path) -> str:
     resolved_project_dir = _safe_resolve(project_dir)
-    if os.name == "nt":
-        python_rel_path = Path("Scripts") / "python.exe"
-    else:
-        python_rel_path = Path("bin") / "python"
 
     for env_name in (".venv", "venv"):
-        candidate = resolved_project_dir / env_name / python_rel_path
-        if candidate.is_file():
-            return str(candidate)
+        for python_rel_path in _python_relative_candidates():
+            candidate = resolved_project_dir / env_name / python_rel_path
+            if candidate.is_file():
+                return str(candidate)
 
     try:
         child_dirs = sorted(
@@ -35,8 +41,9 @@ def resolve_project_python_path(project_dir: Path) -> str:
         if not (child / "pyvenv.cfg").is_file():
             continue
 
-        candidate = child / python_rel_path
-        if candidate.is_file():
-            return str(candidate)
+        for python_rel_path in _python_relative_candidates():
+            candidate = child / python_rel_path
+            if candidate.is_file():
+                return str(candidate)
 
     return ""

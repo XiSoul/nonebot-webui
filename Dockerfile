@@ -92,6 +92,9 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     fi \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update \
     && apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y --no-install-recommends \
+        fontconfig \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
         libasound2t64 \
         libatk1.0-0t64 \
         libatk-bridge2.0-0t64 \

@@ -168,6 +168,10 @@ WebUI 会自动把它解析并保存为容器内的真实绝对路径。
 
 本镜像已内置 WebUI 预装 `nonebot_plugin_htmlrender` / Playwright Chromium 常见所需的 Linux 运行库。
 
+另外，镜像也会安装常见中文字体包，用于修复 NAS / Docker 场景下 Playwright 截图网页时中文变方块的问题。
+
+如果你之前已经拉取过旧镜像，更新代码后需要重新构建或重新拉取镜像，否则容器里的浏览器字体环境不会自动变化。
+
 如果你的外部项目依赖 Playwright，WebUI 在启动实例前会优先尝试用该项目自己的 Python 环境执行：
 
 ```shell
