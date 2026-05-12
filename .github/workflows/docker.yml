@@ -12,6 +12,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKER_HUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN || secrets.DOCKERHUB_PASSWORD || secrets.DOCKER_HUB_ACCESS_TOKEN }}
+  ENABLE_GHCR: ${{ secrets.ENABLE_GHCR || 'false' }}
   TEST_SERVER_HOST: ${{ secrets.TEST_SERVER_HOST || '72.31.92.61' }}
   TEST_SERVER_USER: ${{ secrets.TEST_SERVER_USER || 'xisoul' }}
 
@@ -38,6 +39,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
+        if: ${{ env.ENABLE_GHCR == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -79,12 +81,11 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Docker metadata
+      - name: Docker metadata for Docker Hub
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_USERNAME != '' && format('docker.io/{0}/{1}', env.DOCKERHUB_USERNAME, env.IMAGE_NAME) || '' }}
           tags: |
             type=ref,event=branch
@@ -94,7 +95,8 @@ jobs:
             type=raw,value=${{ steps.app_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=${{ steps.app_minor_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
 
-      - name: Build and Push
+      - name: Build and Push Docker Hub
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -107,6 +109,39 @@ jobs:
             VARIANT=slim
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Docker metadata for GHCR
+        if: ${{ env.ENABLE_GHCR == 'true' }}
+        id: meta_ghcr
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.app_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.app_minor_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+
+      - name: Build and Push GHCR
+        if: ${{ env.ENABLE_GHCR == 'true' }}
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.app_version.outputs.VERSION }}
+            VCS_REF=${{ github.sha }}
+            PYTHON_IMAGE=3.11
+            VARIANT=slim
+          tags: ${{ steps.meta_ghcr.outputs.tags }}
+          labels: ${{ steps.meta_ghcr.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
