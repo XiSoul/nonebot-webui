@@ -39,6 +39,13 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - 尽量减少手动进容器、手动改配置、手动查日志的频率
 - 让常用的运行、安装依赖、插件管理、文件修改、日志排查都能在 WebUI 里完成
 
+## 文档导航
+
+- [使用文档](./docs/USAGE.md)
+- [部署文档](./docs/DEPLOY.md)
+- [更新文档](./docs/UPDATE.md)
+- [发版草稿](./RELEASE_TODO_2026-05-01.md)
+
 ## 主要功能
 
 - 多实例管理：创建实例、接入已有实例、切换实例、启停与状态同步
@@ -47,6 +54,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - 日志与通知：统一查看 WebUI 与实例日志，通知中心常驻留痕
 - 备份恢复：支持本地备份、上传恢复，以及 WebDAV / S3 远端备份
 - 容器场景支持：代理、镜像源、路径映射、随机 token、外部实例接入
+- 主题系统：支持多套界面主题、主色配色切换，以及亮暗模式切换与持久化
 
 ## 这次二改的重点
 
@@ -59,6 +67,9 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - 将实例运行日志与维护终端拆分，实例操作页与独立终端页职责分离
 - 调整概览、通知、日志、终端交互，让运维动作更集中
 - 新增关于页，文档入口和项目信息集中展示
+- 新增 WebUI 多主题与配色系统，支持 `Classic / Frost / Paper / Midnight`
+- 修复主题抽屉被页面内容遮挡的问题，抽屉层级提升为真正的全局顶层
+- 修复手动切换亮暗模式后刷新回退的问题
 
 ## 适合谁用
 
@@ -77,7 +88,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-推荐优先使用显式版本号，例如 `0.4.6`、`0.4`，后面做升级、回滚、版本检测会更方便。
+推荐优先使用显式版本号，例如 `0.4.7`、`0.4`，后面做升级、回滚、版本检测会更方便。
 
 ### 非 Docker 安装
 
@@ -258,12 +269,12 @@ docker logs nonebot-webui
 - `${major}.${minor}`
 - `${version}`
 
-例如版本 `0.4.6` 会自动生成：
+例如版本 `0.4.7` 会自动生成：
 
 - `xisoul/nonebot-webui:latest`
 - `xisoul/nonebot-webui:master`
 - `xisoul/nonebot-webui:0.4`
-- `xisoul/nonebot-webui:0.4.6`
+- `xisoul/nonebot-webui:0.4.7`
 
 ### 推荐发版步骤
 
@@ -271,7 +282,7 @@ docker logs nonebot-webui
 2. 更新 `pyproject.toml` 中的版本号
 3. 同步更新 `Dockerfile` 中的 `APP_VERSION`
 4. 提交代码
-5. 打版本 tag，例如 `v0.4.6`
+5. 打版本 tag，例如 `v0.4.7`
 6. 推送 `master` 和对应 tag
 
 示例：
@@ -281,8 +292,8 @@ git add .
 git commit -m "feat: your change"
 git push origin master
 
-git tag v0.4.6
-git push origin v0.4.6
+git tag v0.4.7
+git push origin v0.4.7
 ```
 
 ### 重要说明

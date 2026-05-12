@@ -7,6 +7,15 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=18080
+      # Optional network / package environment overrides:
+      # - WEBUI_HTTP_PROXY=http://127.0.0.1:7890
+      # - WEBUI_HTTPS_PROXY=http://127.0.0.1:7890
+      # - WEBUI_ALL_PROXY=socks5://127.0.0.1:7890
+      # - WEBUI_NO_PROXY=127.0.0.1,localhost
+      # - WEBUI_DEBIAN_MIRROR=https://mirrors.ustc.edu.cn
+      # - WEBUI_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+      # - WEBUI_PIP_EXTRA_INDEX_URL=
+      # - WEBUI_PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
     volumes:
       - ./data/projects:/projects
       - ./data/external-projects:/external-projects

@@ -1,8 +1,8 @@
 # Release Notes Draft 2026-05-01
 
-这份清单用于记录 `0.4.6` 计划带上的修复项。
+这份清单用于记录 `0.4.7` 计划带上的修复项。
 
-## 0.4.6 已纳入修复
+## 0.4.7 已纳入修复
 
 ### 1. Docker / NAS 创建容器体验修复
 
@@ -82,8 +82,8 @@
 
 ## 发版前建议确认
 
-1. 确认 `pyproject.toml` 版本号与待打 tag `v0.4.6` 一致
-2. 确认 `Dockerfile` 中 `APP_VERSION` 已同步更新到 `0.4.6`
+1. 确认 `pyproject.toml` 版本号与待打 tag `v0.4.7` 一致
+2. 确认 `Dockerfile` 中 `APP_VERSION` 已同步更新到 `0.4.7`
 3. 构建镜像后优先验证 `nonebot_plugin_htmlrender` 项目的 Playwright Chromium 预装与启动
 4. 复测 NAS / Docker 场景下的路径映射与默认挂载说明
 5. 复测“添加实例失败”场景，确认不再留脏记录

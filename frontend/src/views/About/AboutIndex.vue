@@ -1,8 +1,9 @@
 <script setup lang="ts">
 const repoUrl = 'https://github.com/XiSoul/nonebot-webui'
-const readmeUrl = `${repoUrl}#readme`
-const releaseUrl = `${repoUrl}/releases`
-const dockerDocUrl = `${repoUrl}/blob/main/README.md#生产部署`
+const branchName = 'master'
+const usageDocUrl = `${repoUrl}/blob/${branchName}/docs/USAGE.md`
+const updateDocUrl = `${repoUrl}/blob/${branchName}/docs/UPDATE.md`
+const deployDocUrl = `${repoUrl}/blob/${branchName}/docs/DEPLOY.md`
 
 const features = [
   '面向 NoneBot 实例的创建、导入、运行、终端与文件管理',
@@ -20,20 +21,20 @@ const docs = [
   },
   {
     title: '使用文档',
-    description: '查看安装、导入已有实例、Docker 部署和常见说明。',
-    href: readmeUrl,
-    action: '打开 README'
+    description: '查看首次登录、页面说明、实例接入和常见使用问题。',
+    href: usageDocUrl,
+    action: '打开使用文档'
   },
   {
     title: '更新文档',
-    description: '查看版本发布记录、变更说明和后续升级参考。',
-    href: releaseUrl,
-    action: '查看 Releases'
+    description: '查看近期改动、升级关注点和发版建议。',
+    href: updateDocUrl,
+    action: '打开更新文档'
   },
   {
-    title: 'Docker 部署说明',
-    description: '直接查看镜像、映射目录和生产部署示例。',
-    href: dockerDocUrl,
+    title: '部署文档',
+    description: '查看 Docker、NAS、WSL 场景下的部署和挂载说明。',
+    href: deployDocUrl,
     action: '查看部署文档'
   }
 ]

@@ -3,3 +3,82 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --nb-accent-color: #ea5353;
+    --nb-app-gradient: linear-gradient(160deg, #f8fafc 0%, #eef3f9 48%, #e6edf6 100%);
+    --nb-app-texture: linear-gradient(135deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.06));
+    --nb-shell-bg: rgba(255, 255, 255, 0.56);
+    --nb-shell-border: rgba(148, 163, 184, 0.18);
+    --nb-shell-shadow: 0 28px 72px rgba(15, 23, 42, 0.12);
+    --nb-shell-glow: #ea535318;
+    --nb-sidebar-bg: rgba(255, 255, 255, 0.64);
+    --nb-header-bg: rgba(255, 255, 255, 0.48);
+    --nb-panel-bg: rgba(255, 255, 255, 0.58);
+    --nb-panel-muted-bg: rgba(255, 255, 255, 0.34);
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  body {
+    background:
+      var(--nb-app-texture),
+      var(--nb-app-gradient);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .nb-shell {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--nb-shell-border);
+    background: var(--nb-shell-bg);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+      var(--nb-shell-shadow);
+    backdrop-filter: blur(24px);
+  }
+
+  .nb-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at top right, var(--nb-shell-glow), transparent 34%);
+    opacity: 1;
+  }
+
+  .nb-sidebar-surface {
+    background: var(--nb-sidebar-bg);
+    border-right: 1px solid var(--nb-shell-border);
+    backdrop-filter: blur(24px);
+  }
+
+  .nb-header-surface {
+    background: var(--nb-header-bg);
+    border-bottom: 1px solid var(--nb-shell-border);
+    backdrop-filter: blur(22px);
+  }
+
+  .nb-panel-surface {
+    background: var(--nb-panel-bg);
+    border: 1px solid var(--nb-shell-border);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .nb-panel-muted {
+    background: var(--nb-panel-muted-bg);
+    border: 1px solid var(--nb-shell-border);
+    backdrop-filter: blur(18px);
+  }
+}

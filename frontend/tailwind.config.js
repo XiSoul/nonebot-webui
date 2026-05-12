@@ -1,4 +1,5 @@
 import daisyui from 'daisyui'
+import themeConfig from './theme.config.cjs'
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -8,17 +9,6 @@ export default {
   },
   plugins: [daisyui],
   daisyui: {
-    themes: [
-      {
-        light: {
-          ...require('daisyui/src/theming/themes')['light'],
-          primary: '#EA5353'
-        },
-        dark: {
-          ...require('daisyui/src/theming/themes')['dark'],
-          primary: '#EA5353'
-        }
-      }
-    ]
+    themes: themeConfig.daisyThemes
   }
 }

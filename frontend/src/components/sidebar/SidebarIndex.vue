@@ -20,8 +20,8 @@ const logoUrl = 'https://x.none.bot/favicon.png'
 
     <div
       :class="{
-        'fixed lg:relative top-0 left-0 h-full flex flex-col justify-between py-2 px-4 transition-all': true,
-        '-translate-x-full lg:translate-x-0 bg-base-200 lg:bg-base-200/50 shadow-md': true,
+        'fixed lg:relative top-0 left-0 h-full flex flex-col justify-between py-3 px-4 transition-all': true,
+        '-translate-x-full lg:translate-x-0 nb-sidebar-surface shadow-xl': true,
         '!-translate-x-0': store.menuShow,
         'lg:!w-20': store.menuMinify
       }"

@@ -7,6 +7,7 @@ import { clearAuthToken, getAuthToken } from './auth'
 import { getErrorMessage } from './utils'
 import { useNoneBotStore, useToastStore } from '@/stores'
 import App from '@/App.vue'
+import { applyStoredThemeSelection } from '@/theme/webuiTheme'
 
 type ClientRequest = Parameters<typeof client.interceptors.request.use>[0] extends (
   request: infer T,
@@ -21,6 +22,8 @@ const installVuePlugins = (app: VueAPP) => {
 }
 
 export const initWebUI = async () => {
+  applyStoredThemeSelection()
+
   const app = createApp(App)
   installVuePlugins(app)
   app.mount('#app')
@@ -34,9 +37,19 @@ export const initWebUI = async () => {
   })
 
   const token = getAuthToken()
+  const currentUrl = new URL(window.location.href)
+  const hasLoginTokenInUrl =
+    currentUrl.pathname.includes('/login') &&
+    (currentUrl.searchParams.get('token')?.trim() ||
+      currentUrl.hash.includes('token=') ||
+      /\/login[:/]/i.test(currentUrl.pathname))
 
-  if (!token) {
+  if (!token && !hasLoginTokenInUrl) {
     router.push('/login')
+    return
+  }
+
+  if (!token && hasLoginTokenInUrl) {
     return
   }
 
