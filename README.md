@@ -88,7 +88,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-推荐优先使用显式版本号，例如 `0.4.7`、`0.4`，后面做升级、回滚、版本检测会更方便。
+推荐优先使用显式版本号，例如 `0.4.7`，后面做升级、回滚、版本检测会更方便。
 
 ### 非 Docker 安装
 
@@ -274,14 +274,12 @@ docker logs nonebot-webui
 
 - `latest`
 - `master`
-- `${major}.${minor}`
 - `${version}`
 
 例如版本 `0.4.7` 会自动生成：
 
 - `xisoul/nonebot-webui:latest`
 - `xisoul/nonebot-webui:master`
-- `xisoul/nonebot-webui:0.4`
 - `xisoul/nonebot-webui:0.4.7`
 
 ### 推荐发版步骤

@@ -27,7 +27,6 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       image_tag: ${{ steps.image_tag.outputs.TAG }}
       app_version: ${{ steps.app_version.outputs.VERSION }}
-      app_minor_version: ${{ steps.app_minor_version.outputs.VERSION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -64,13 +63,6 @@ jobs:
           VERSION="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Read package major.minor version
-        id: app_minor_version
-        run: |
-          VERSION="$(awk -F'\"' '/^version = \"/ {print $2; exit}' pyproject.toml)"
-          MAJOR_MINOR="$(echo "$VERSION" | awk -F'.' '{print $1 "." $2}')"
-          echo "VERSION=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
-
       - name: Generate image tag
         id: image_tag
         run: |
@@ -90,10 +82,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.app_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.app_minor_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build and Push Docker Hub
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
@@ -122,10 +112,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.app_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.app_minor_version.outputs.VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build and Push GHCR
         if: ${{ env.ENABLE_GHCR == 'true' }}
