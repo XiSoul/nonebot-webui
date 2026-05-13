@@ -134,6 +134,14 @@ docker run -d \
 - 新版本镜像不再声明默认 Docker `VOLUME`，避免 NAS / Docker Desktop 自动带出误导性的默认挂载项
 - 如果 NAS 面板自动带出其它旧默认卷（例如 `/data`），建议手动删掉，再按上面这些路径重新配置
 
+仓库自带的 `docker-compose.yml` 现在也包含了 `watchtower` 自动更新方案：
+
+- 自动检查 `xisoul/nonebot-webui:latest`
+- 发现远端更新后自动拉取新镜像
+- 自动重建 `nonebot-webui` 容器
+
+如果你不想自动更新，可以删掉 compose 里的 `watchtower` 服务。
+
 ### 路径映射说明
 
 Docker / NAS 场景下请区分“宿主机路径”和“容器内路径”：

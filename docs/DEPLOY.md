@@ -61,6 +61,22 @@ docker run -d \
 - WebUI 创建的新实例走 `/projects`
 - 宿主机已有实例走 `/external-projects`
 
+当前 compose 示例还额外带了一套 `watchtower` 自动更新容器：
+
+- 会定时检查 `nonebot-webui:latest` 是否有新的远端 digest
+- 发现更新后自动拉取新镜像
+- 自动重建 `nonebot-webui` 容器
+
+如果你不想自动更新，可以直接删掉 `watchtower` 服务和 `labels` 中的：
+
+- `com.centurylinklabs.watchtower.enable=true`
+
+如果你想保留自动更新，但把检查周期调长，可以修改：
+
+- `--interval 300`
+
+这个值单位是秒，`300` 表示每 5 分钟检查一次。
+
 ## NAS / Docker Desktop 注意事项
 
 较新的镜像已经不再声明误导性的默认 `VOLUME`，就是为了避免 NAS 面板自动生成一堆看起来“必须挂载”、但实际容易误导的目录。
@@ -144,3 +160,19 @@ docker logs nonebot-webui
 3. 重建容器
 4. 登录后检查实例列表、日志、终端和安全设置
 5. 如涉及版本更新，再核对仓库中的更新文档
+
+如果你已经启用了 `watchtower` 自动更新，则通常不需要手工 `docker pull` 和重建容器；只需要确保你使用的是：
+
+- `xisoul/nonebot-webui:latest`
+
+并且 `watchtower` 容器本身在正常运行。
+
+## Docker Hub 页面说明
+
+Docker Hub 仓库页里的 `Overview` 是仓库介绍区，不是镜像更新推送配置。
+
+需要注意：
+
+- 这个页面不会因为 GitHub Actions 推镜像就自动填充
+- 如果你想让它显示项目介绍，需要在 Docker Hub 仓库页手动填写
+- Docker Desktop 里“有新版本”的提示是本地客户端自己检查远端 tag / digest 后显示的，不是 Docker Hub 主动推送通知

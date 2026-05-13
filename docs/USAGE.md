@@ -116,3 +116,14 @@ docker logs nonebot-webui
 ### 为什么某些插件启动时会下载 Chromium？
 
 如果实例依赖 `Playwright` 或 `nonebot_plugin_htmlrender`，WebUI 会尝试在实例启动前补齐浏览器依赖，这是正常行为。
+
+### 为什么 Docker Hub 页面里的 Overview 是空白的？
+
+`Overview` 是 Docker Hub 仓库说明页，不是镜像更新开关。
+
+如果它是空白，通常说明：
+
+- Docker Hub 仓库页面还没有手动填写介绍
+- 当前镜像虽然是通过 GitHub Actions 自动推送的，但不会自动把 GitHub README 同步到 Docker Hub Overview
+
+这不影响镜像正常发布，也不影响 Docker Desktop 检查新版本。

@@ -27,3 +27,17 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  watchtower:
+    image: docker.io/containrrr/watchtower:latest
+    container_name: nonebot-webui-watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - --cleanup
+      - --interval
+      - "300"
+      - nonebot-webui
