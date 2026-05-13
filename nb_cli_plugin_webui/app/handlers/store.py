@@ -1,5 +1,5 @@
 import math
-from asyncio import create_task, as_completed
+from asyncio import Lock, create_task, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -123,9 +123,18 @@ class ModuleStoreManager(Generic[_T]):
         self.items: List[_T] = list()
         self.page = 1
         self.search_result: List[_T] = list()
+        self._load_lock = Lock()
 
     async def load_item(self) -> None:
-        self.items = await load_module_data(self.module_type) or list()  # type: ignore
+        async with self._load_lock:
+            self.items = await load_module_data(self.module_type) or list()  # type: ignore
+
+    async def ensure_items_loaded(self) -> None:
+        if self.items:
+            return
+
+        log.warning(f"{self.module_type} store cache is empty, reloading from registry.")
+        await self.load_item()
 
     def get_item(self, *, is_search: bool = False) -> List[_T]:
         if is_search:

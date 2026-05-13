@@ -23,6 +23,7 @@ export type SecuritySettingsUpdateResult = {
   random_token_expire_hours: number
   session_token_expire_hours: number
   token_expires_at: number
+  login_token: string
 }
 
 type GenericResponse<T> = {

@@ -70,6 +70,9 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - 新增 WebUI 多主题与配色系统，支持 `Classic / Frost / Paper / Midnight`
 - 修复主题抽屉被页面内容遮挡的问题，抽屉层级提升为真正的全局顶层
 - 修复手动切换亮暗模式后刷新回退的问题
+- 维护终端升级为多会话 PTY 工作台，支持会话标签、主题切换、快速命令和常驻交互
+- 实例操作页聚焦运行日志与实例控制，不再混入旧的终端细节面板
+- 永久 token 模式新增可复制的登录链接，登录页支持自动识别链接凭证
 
 ## 适合谁用
 
@@ -88,7 +91,7 @@ _✨ 面向 NoneBot 多实例运维的 WebUI ✨_
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-推荐优先使用显式版本号，例如 `0.4.7`，后面做升级、回滚、版本检测会更方便。
+推荐优先使用显式版本号，例如 `0.4.8`，后面做升级、回滚、版本检测会更方便。
 
 ### 非 Docker 安装
 
@@ -276,11 +279,11 @@ docker logs nonebot-webui
 - `master`
 - `${version}`
 
-例如版本 `0.4.7` 会自动生成：
+例如版本 `0.4.8` 会自动生成：
 
 - `xisoul/nonebot-webui:latest`
 - `xisoul/nonebot-webui:master`
-- `xisoul/nonebot-webui:0.4.7`
+- `xisoul/nonebot-webui:0.4.8`
 
 ### 推荐发版步骤
 
@@ -288,7 +291,7 @@ docker logs nonebot-webui
 2. 更新 `pyproject.toml` 中的版本号
 3. 同步更新 `Dockerfile` 中的 `APP_VERSION`
 4. 提交代码
-5. 打版本 tag，例如 `v0.4.7`
+5. 打版本 tag，例如 `v0.4.8`
 6. 推送 `master` 和对应 tag
 
 示例：
@@ -298,8 +301,8 @@ git add .
 git commit -m "feat: your change"
 git push origin master
 
-git tag v0.4.7
-git push origin v0.4.7
+git tag v0.4.8
+git push origin v0.4.8
 ```
 
 ### 重要说明

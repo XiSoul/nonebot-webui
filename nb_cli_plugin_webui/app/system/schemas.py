@@ -140,3 +140,4 @@ class SecuritySettingsUpdateResponse(BaseModel):
     random_token_expire_hours: int = 24
     session_token_expire_hours: int = 24
     token_expires_at: int = 0
+    login_token: str = ""

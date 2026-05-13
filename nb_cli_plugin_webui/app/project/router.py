@@ -21,8 +21,12 @@ from .service import (
     create_nonebot_project,
     is_managed_project_dir,
 )
-from ..process.service import stop_project_shell_session
-from ..process.service import get_project_runtime_log_key, get_project_shell_log_key
+from ..process.service import (
+    stop_project_shell_session,
+    get_project_runtime_log_key,
+    get_project_shell_log_key,
+    list_project_shell_sessions,
+)
 from .schemas import (
     AddProjectData,
     GenericResponse,
@@ -91,6 +95,13 @@ async def delete_project(
         pass
     try:
         LogStorageFather.remove_storage(get_project_runtime_log_key(data.project_id))
+    except Exception:
+        pass
+    try:
+        for item in list_project_shell_sessions(data.project_id):
+            LogStorageFather.remove_storage(
+                get_project_shell_log_key(data.project_id, session_id=item.session_id)
+            )
     except Exception:
         pass
     try:

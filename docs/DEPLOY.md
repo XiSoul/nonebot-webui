@@ -10,7 +10,7 @@
 - `docker.io/xisoul/nonebot-webui:master`
 - `docker.io/xisoul/nonebot-webui:${version}`
 
-更推荐使用显式版本号，例如 `0.4.7`，便于后续升级、回滚和版本排查。
+更推荐使用显式版本号，例如 `0.4.8`，便于后续升级、回滚和版本排查。
 
 ## 最小可用 `docker run`
 

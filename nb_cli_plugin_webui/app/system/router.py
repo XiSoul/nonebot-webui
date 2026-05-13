@@ -368,6 +368,7 @@ async def update_security_settings(
     )
 
     token_changed = False
+    issued_login_token = ""
     token_settings_changed = bool(new_token)
     if next_token_mode != current_token_mode:
         token_settings_changed = True
@@ -410,6 +411,7 @@ async def update_security_settings(
             Config.set_permanent_login_token(new_token)
             Config.secret_key = SecretStr(generate_secret_key())
             token_changed = True
+            issued_login_token = new_token
         elif current_token_mode == "random":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -467,6 +469,7 @@ async def update_security_settings(
             token_expires_at=get_login_token_expires_at()
             if next_token_mode == "random"
             else 0,
+            login_token=issued_login_token if next_token_mode == "permanent" else "",
         )
     )
 

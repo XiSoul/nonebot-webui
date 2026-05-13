@@ -80,6 +80,7 @@ async def _get_nonebot_store_items(
         pass
 
     store_manager = get_store_manager(module_type)
+    await store_manager.ensure_items_loaded()
     if not show_all:
         data = store_manager.generate_page(project_meta, page=page, is_search=is_search)
     else:
@@ -103,6 +104,7 @@ async def search_nonebot_store_item(
     """
     project_meta = project.read()
     store_manager = get_store_manager(data.module_type)
+    await store_manager.ensure_items_loaded()
 
     store_manager.search_item(project_meta, content=data.content, tags=data.tags)
     result = store_manager.generate_page(project_meta, page=0, is_search=True)

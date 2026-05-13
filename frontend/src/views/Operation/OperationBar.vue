@@ -67,7 +67,7 @@ const actionButtons = computed(() => [
   {
     key: 'stop',
     label: '停止',
-    desc: '终止当前实例进程',
+    desc: '向当前实例发送 Ctrl+C 中断',
     variant: 'btn-ghost',
     disabled: (isStopped.value && !isStarting.value) || deleting.value,
     action: stopBot
@@ -111,14 +111,19 @@ const waitForRuntimeState = async (
 ) => {
   for (let index = 0; index < attempts; index += 1) {
     await store.loadBots()
-    const nextBot = store.bots[projectId]
+    const nextBot =
+      store.bots[projectId] ??
+      (store.selectedBot?.project_id === projectId ? store.selectedBot : undefined)
     const nextState = getRuntimeState(nextBot)
     if (expectedStates.includes(nextState)) {
       return nextState
     }
     await sleep(interval)
   }
-  return getRuntimeState(store.bots[projectId])
+  return getRuntimeState(
+    store.bots[projectId] ??
+      (store.selectedBot?.project_id === projectId ? store.selectedBot : undefined)
+  )
 }
 
 const markStarting = (projectId: string) => {
@@ -188,7 +193,6 @@ const stopBot = async () => {
 
   const projectId = store.selectedBot.project_id
   const projectName = store.selectedBot.project_name
-  pendingRuntimeState.value = 'stopped'
   const { data, error } = await ProcessService.stopProcessV1ProcessStopPost({
     query: { project_id: projectId }
   })
@@ -198,8 +202,19 @@ const stopBot = async () => {
     toast.add('error', `停止失败，原因：${getErrorMessage(error)}`, '', 5000)
   }
   if (data) {
-    await syncRuntimeState()
-    toast.add('success', `${projectName} 已停止`, '', 3000)
+    const nextState = await waitForRuntimeState(['stopped', 'running'], {
+      projectId,
+      attempts: 30,
+      interval: 500
+    })
+    pendingRuntimeState.value = ''
+    if (nextState === 'stopped') {
+      await syncRuntimeState()
+      toast.add('success', `${projectName} 已中断并停止`, '', 3000)
+    } else {
+      await syncRuntimeState()
+      toast.add('warning', `${projectName} 中断信号已发送，但实例状态未及时回落，请查看右侧日志`, '', 5000)
+    }
   }
 
   operating.value = false

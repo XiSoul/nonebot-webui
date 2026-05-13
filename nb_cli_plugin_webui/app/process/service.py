@@ -5,6 +5,8 @@ import asyncio
 import shlex
 import json
 import time
+import uuid
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from nb_cli_plugin_webui.app.config import Config
 from nb_cli_plugin_webui.app.project import service as project_service
 from nb_cli_plugin_webui.app.handlers.process import (
     Processor,
+    PtyTerminalSession,
     CustomLog,
     LogStorage,
     ProcessManager,
@@ -27,6 +30,7 @@ from nb_cli_plugin_webui.app.utils.bot_proxy import get_bot_proxy_env, get_pip_p
 from nb_cli_plugin_webui.app.utils.python_env import resolve_project_python_path
 
 from .exceptions import DriverNotFound, AdapterNotFound
+from .schemas import TerminalSessionInfo
 
 
 SHELL_COMMAND_DONE_MARKER = "__NB_WEBUI_CMD_DONE__:"
@@ -52,46 +56,211 @@ PROCESS_START_STABILITY_SECONDS = 2.0
 PROCESS_START_WITH_PORT_STABILITY_SECONDS = 0.5
 PROJECT_READY_TIMEOUT_SECONDS = 90.0
 PROJECT_SHELL_LOG_SUFFIX = ":shell"
+PROJECT_SHELL_SESSION_LOG_SUFFIX = ":shell:"
 PLAYWRIGHT_DIRLOCK_STALE_SECONDS = 5 * 60
 HTMLRENDER_PROJECT_SCAN_CACHE_SECONDS = 30.0
 PORT_PICK_DETERMINISTIC_WINDOW = 128
 
 
+@dataclass
+class ManagedShellSession:
+    session_id: str
+    title: str
+    created_at: float
+    process: PtyTerminalSession
+
+
+@dataclass
+class ProjectShellSessionState:
+    sessions: Dict[str, ManagedShellSession] = field(default_factory=dict)
+    active_session_id: Optional[str] = None
+    counter: int = 0
+
+
 class ProjectShellSessionManager:
-    sessions: Dict[str, Processor] = dict()
+    sessions: Dict[str, ProjectShellSessionState] = dict()
 
     @classmethod
-    def get_session(cls, project_id: str) -> Optional[Processor]:
-        session = cls.sessions.get(project_id)
-        if session is None:
+    def _get_state(cls, project_id: str) -> Optional[ProjectShellSessionState]:
+        state = cls.sessions.get(project_id)
+        if state is None:
             return None
-        if session.refresh_runtime_state():
-            return session
-        cls.sessions.pop(project_id, None)
-        return None
+        cls._prune_state(project_id, state)
+        if not state.sessions:
+            cls.sessions.pop(project_id, None)
+            return None
+        return state
 
     @classmethod
-    def set_session(cls, project_id: str, session: Processor) -> None:
-        cls.sessions[project_id] = session
+    def _prune_state(
+        cls, project_id: str, state: Optional[ProjectShellSessionState] = None
+    ) -> None:
+        current_state = state or cls.sessions.get(project_id)
+        if current_state is None:
+            return
+
+        invalid_ids: List[str] = []
+        for session_id, managed in current_state.sessions.items():
+            if not managed.process.refresh_runtime_state():
+                invalid_ids.append(session_id)
+
+        for session_id in invalid_ids:
+            current_state.sessions.pop(session_id, None)
+
+        if current_state.active_session_id not in current_state.sessions:
+            current_state.active_session_id = next(
+                iter(current_state.sessions.keys()), None
+            )
 
     @classmethod
-    async def stop_session(cls, project_id: str) -> bool:
-        session = cls.sessions.pop(project_id, None)
-        if session is None:
+    def _build_title(cls, state: ProjectShellSessionState) -> str:
+        return f"Shell #{state.counter}"
+
+    @classmethod
+    def create_session(
+        cls, project_id: str, process: PtyTerminalSession
+    ) -> ManagedShellSession:
+        state = cls.sessions.setdefault(project_id, ProjectShellSessionState())
+        state.counter += 1
+        session_id = uuid.uuid4().hex[:10]
+        managed = ManagedShellSession(
+            session_id=session_id,
+            title=cls._build_title(state),
+            created_at=time.time(),
+            process=process,
+        )
+        state.sessions[session_id] = managed
+        state.active_session_id = session_id
+        return managed
+
+    @classmethod
+    def get_session(
+        cls, project_id: str, session_id: Optional[str] = None
+    ) -> Optional[ManagedShellSession]:
+        state = cls._get_state(project_id)
+        if state is None:
+            return None
+
+        target_id = session_id or state.active_session_id
+        if not target_id:
+            return None
+        return state.sessions.get(target_id)
+
+    @classmethod
+    def get_active_session(cls, project_id: str) -> Optional[ManagedShellSession]:
+        return cls.get_session(project_id)
+
+    @classmethod
+    def list_sessions(cls, project_id: str) -> List[ManagedShellSession]:
+        state = cls._get_state(project_id)
+        if state is None:
+            return []
+        return list(state.sessions.values())
+
+    @classmethod
+    def export_sessions(cls, project_id: str) -> List[TerminalSessionInfo]:
+        state = cls._get_state(project_id)
+        if state is None:
+            return []
+
+        result: List[TerminalSessionInfo] = []
+        for managed in state.sessions.values():
+            result.append(
+                TerminalSessionInfo(
+                    session_id=managed.session_id,
+                    title=managed.title,
+                    created_at=managed.created_at,
+                    is_active=state.active_session_id == managed.session_id,
+                    is_running=managed.process.refresh_runtime_state(),
+                    log_key=get_project_shell_log_key(
+                        project_id, session_id=managed.session_id
+                    ),
+                )
+            )
+        return result
+
+    @classmethod
+    def set_active_session(cls, project_id: str, session_id: str) -> bool:
+        state = cls._get_state(project_id)
+        if state is None or session_id not in state.sessions:
+            return False
+        state.active_session_id = session_id
+        return True
+
+    @classmethod
+    def get_active_session_id(cls, project_id: str) -> str:
+        state = cls._get_state(project_id)
+        if state is None or not state.active_session_id:
+            return ""
+        return state.active_session_id
+
+    @classmethod
+    async def stop_session(
+        cls, project_id: str, session_id: Optional[str] = None
+    ) -> bool:
+        state = cls.sessions.get(project_id)
+        if state is None:
+            return False
+
+        cls._prune_state(project_id, state)
+        target_id = session_id or state.active_session_id
+        if not target_id:
+            cls.sessions.pop(project_id, None)
+            return False
+
+        managed = state.sessions.pop(target_id, None)
+        if managed is None:
+            if not state.sessions:
+                cls.sessions.pop(project_id, None)
             return False
 
         try:
-            await session.stop()
+            await managed.process.stop()
         except Exception:
             pass
+
+        try:
+            LogStorageFather.remove_storage(
+                get_project_shell_log_key(project_id, session_id=managed.session_id)
+            )
+        except Exception:
+            pass
+
+        if state.active_session_id == target_id:
+            state.active_session_id = next(iter(state.sessions.keys()), None)
+        if not state.sessions:
+            cls.sessions.pop(project_id, None)
         return True
+
+    @classmethod
+    async def stop_all_sessions(cls, project_id: str) -> bool:
+        state = cls.sessions.pop(project_id, None)
+        if state is None:
+            return False
+
+        stopped = False
+        for managed in list(state.sessions.values()):
+            try:
+                await managed.process.stop()
+            except Exception:
+                pass
+            try:
+                LogStorageFather.remove_storage(
+                    get_project_shell_log_key(project_id, session_id=managed.session_id)
+                )
+            except Exception:
+                pass
+            stopped = True
+        return stopped
 
 
 def get_project_runtime_log_key(project_id: str) -> str:
     return project_id
 
 
-def get_project_shell_log_key(project_id: str) -> str:
+def get_project_shell_log_key(project_id: str, session_id: Optional[str] = None) -> str:
+    if session_id:
+        return f"{project_id}{PROJECT_SHELL_SESSION_LOG_SUFFIX}{session_id}"
     return f"{project_id}{PROJECT_SHELL_LOG_SUFFIX}"
 
 
@@ -787,7 +956,11 @@ def ensure_project_log_storage(project_id: str) -> LogStorage:
 
 
 async def stop_project_shell_session(project_id: str) -> bool:
-    return await ProjectShellSessionManager.stop_session(project_id)
+    return await ProjectShellSessionManager.stop_all_sessions(project_id)
+
+
+def list_project_shell_sessions(project_id: str) -> List[TerminalSessionInfo]:
+    return ProjectShellSessionManager.export_sessions(project_id)
 
 
 def _extract_recent_error_logs(log_storage: LogStorage, limit: int = 12) -> str:
@@ -898,10 +1071,19 @@ async def _wait_for_project_ready(
 
 async def ensure_project_shell_session(
     project: project_service.NoneBotProjectManager,
-) -> Optional[Processor]:
+    *,
+    session_id: Optional[str] = None,
+    create_new: bool = False,
+) -> Optional[ManagedShellSession]:
     project_meta = project.read()
 
-    existing_session = ProjectShellSessionManager.get_session(project_meta.project_id)
+    existing_session = (
+        None
+        if create_new
+        else ProjectShellSessionManager.get_session(
+            project_meta.project_id, session_id=session_id
+        )
+    )
     if existing_session is not None:
         return existing_session
 
@@ -921,25 +1103,31 @@ async def ensure_project_shell_session(
         )
         args = (shell,)
 
-    process = Processor(
+    process = PtyTerminalSession(
         *args,
         cwd=Path(project_meta.project_dir),
         env=env,
         log_destroy_seconds=Config.process_log_destroy_seconds,
         project_id=project_meta.project_id,
         project_name=project_meta.project_name,
-        terminate_duplicate_processes=False,
     )
-    process.log_storage = ensure_project_shell_log_storage(project_meta.project_id)
+    managed = ProjectShellSessionManager.create_session(project_meta.project_id, process)
+    process.log_storage = LogStorage(Config.process_log_destroy_seconds)
+    LogStorageFather.add_storage(
+        process.log_storage,
+        get_project_shell_log_key(project_meta.project_id, session_id=managed.session_id),
+    )
     await process.start()
-    ProjectShellSessionManager.set_session(project_meta.project_id, process)
     bootstrap_script = _build_shell_bootstrap_script(
         Path(project_meta.project_dir), proxy_env=raw_proxy_env
     )
     await process.write_stdin(bootstrap_script.encode())
 
     await process.log_storage.add_log(
-        CustomLog(level="INFO", message="项目终端 Shell 已连接，可直接连续输入命令。")
+        CustomLog(
+            level="INFO",
+            message=f"项目终端 {managed.title} 已连接，可直接连续输入命令。",
+        )
     )
     if socks_proxy_disabled:
         await process.log_storage.add_log(
@@ -948,37 +1136,70 @@ async def ensure_project_shell_session(
                 message="检测到 SOCKS 代理：终端中的 pip 会临时跳过代理，playwright 等其他命令仍保留原代理环境。",
             )
         )
-    return process
+    return managed
 
 
 async def get_active_terminal_process(
     project: project_service.NoneBotProjectManager,
     *,
     create_shell: bool = False,
-) -> Optional[Processor]:
+    session_id: Optional[str] = None,
+) -> Optional[object]:
     runtime_process = ProcessManager.get_process(project.project_id)
     if runtime_process and runtime_process.refresh_runtime_state():
         return runtime_process
 
-    shell_session = ProjectShellSessionManager.get_session(project.project_id)
+    shell_session = ProjectShellSessionManager.get_session(
+        project.project_id, session_id=session_id
+    )
     if shell_session is not None:
-        return shell_session
+        return shell_session.process
 
     if create_shell:
-        return await ensure_project_shell_session(project)
+        managed = await ensure_project_shell_session(project, session_id=session_id)
+        return managed.process if managed else None
 
     return None
 
 
+def get_runtime_process(
+    project: project_service.NoneBotProjectManager,
+) -> Optional[Processor]:
+    runtime_process = ProcessManager.get_process(project.project_id)
+    if runtime_process and runtime_process.refresh_runtime_state():
+        return runtime_process
+    return None
+
+
 async def execute_project_command(
-    project: project_service.NoneBotProjectManager, command: str
+    project: project_service.NoneBotProjectManager,
+    command: str,
+    *,
+    session_id: Optional[str] = None,
 ) -> None:
-    process = await ensure_project_shell_session(project)
-    if process is None:
+    managed = await ensure_project_shell_session(project, session_id=session_id)
+    if managed is None:
         raise ProcessNotRunning()
 
     wrapped_command = _wrap_shell_command(command)
-    await process.write_stdin(wrapped_command.encode())
+    await managed.process.write_stdin(wrapped_command.encode())
+
+
+async def resize_project_shell_session(
+    project: project_service.NoneBotProjectManager,
+    *,
+    cols: int,
+    rows: int,
+    session_id: Optional[str] = None,
+) -> bool:
+    session = ProjectShellSessionManager.get_session(
+        project.project_id, session_id=session_id
+    )
+    if session is None:
+        return False
+
+    await session.process.resize(cols, rows)
+    return True
 
 
 async def run_nonebot_project(project: project_service.NoneBotProjectManager):

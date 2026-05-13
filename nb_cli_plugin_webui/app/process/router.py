@@ -23,19 +23,32 @@ from nb_cli_plugin_webui.app.handlers.process import (
 from .service import (
     run_nonebot_project,
     execute_project_command,
+    list_project_shell_sessions,
     ensure_project_log_storage,
     ensure_project_runtime_log_storage,
     ensure_project_shell_log_storage,
     ensure_project_shell_session,
+    ProjectShellSessionManager,
     get_active_terminal_process,
+    get_runtime_process,
     get_project_runtime_log_key,
     get_project_shell_log_key,
+    resize_project_shell_session,
 )
 from .exceptions import DriverNotFound, AdapterNotFound
+from .schemas import TerminalSessionInfo
 
 router = APIRouter(tags=["process"])
 log_listeners: Dict[WebSocket, Callable[[ProcessLog], Awaitable[None]]] = dict()
 project_run_tasks: Dict[str, asyncio.Task] = {}
+
+
+def _model_to_dict(model: object) -> dict:
+    if hasattr(model, "model_dump"):
+        return model.model_dump()  # type: ignore[no-any-return]
+    if hasattr(model, "dict"):
+        return model.dict()  # type: ignore[no-any-return]
+    return dict(model) if isinstance(model, dict) else {}
 
 
 def is_project_starting(project_id: str) -> bool:
@@ -98,9 +111,9 @@ async def _stop_process(
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
-    - 终止 NoneBot 实例
+    - 向 NoneBot 实例发送中断信号，优先执行优雅退出
     """
-    process = await get_active_terminal_process(project, create_shell=False)
+    process = get_runtime_process(project)
     if process is None:
         pending_task = project_run_tasks.get(project.project_id)
         if pending_task and not pending_task.done():
@@ -112,7 +125,16 @@ async def _stop_process(
             )
             return GenericResponse(detail="success")
         raise ProcessNotRunning()
-    await process.stop()
+
+    await process.interrupt()
+    for _ in range(20):
+        if not process.refresh_runtime_state():
+            break
+        await asyncio.sleep(0.1)
+
+    if process.refresh_runtime_state():
+        await process.stop()
+
     project_run_tasks.pop(project.project_id, None)
     return GenericResponse(detail="success")
 
@@ -154,19 +176,129 @@ async def open_terminal(
     """
     - 为实例创建常驻 Shell 终端会话，可与运行中的机器人并存
     """
-    await ensure_project_shell_session(project)
+    session = await ensure_project_shell_session(project)
+    return GenericResponse(detail=session.session_id if session else "")
+
+
+@router.get("/terminal/sessions", response_model=GenericResponse[List[TerminalSessionInfo]])
+async def get_terminal_sessions(
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[List[TerminalSessionInfo]]:
+    """
+    - 获取实例维护终端会话列表
+    """
+    logger.info(f"Terminal sessions requested for project {project.project_id}")
+    return GenericResponse(detail=list_project_shell_sessions(project.project_id))
+
+
+@router.post("/terminal/session/create", response_model=GenericResponse[TerminalSessionInfo])
+async def create_terminal_session(
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[TerminalSessionInfo]:
+    """
+    - 创建新的维护终端会话
+    """
+    session = await ensure_project_shell_session(project, create_new=True)
+    if session is None:
+        raise ProcessNotRunning()
+
+    exported = next(
+        (
+            item
+            for item in list_project_shell_sessions(project.project_id)
+            if item.session_id == session.session_id
+        ),
+        None,
+    )
+    if exported is None:
+        raise ProcessNotRunning()
+    return GenericResponse(detail=exported)
+
+
+@router.post("/terminal/session/switch", response_model=GenericResponse[str])
+async def switch_terminal_session(
+    session_id: str,
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 切换当前维护终端活动会话
+    """
+    switched = ProjectShellSessionManager.set_active_session(
+        project.project_id, session_id
+    )
+    if not switched:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
+        )
+    return GenericResponse(detail="success")
+
+
+@router.delete("/terminal/session/delete", response_model=GenericResponse[str])
+async def delete_terminal_session(
+    session_id: str,
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 关闭指定维护终端会话
+    """
+    deleted = await ProjectShellSessionManager.stop_session(
+        project.project_id, session_id=session_id
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
+        )
     return GenericResponse(detail="success")
 
 
 @router.get("/terminal/log-key", response_model=GenericResponse[str])
 async def get_terminal_log_key(
+    session_id: Optional[str] = None,
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
     - 获取实例维护 Shell 对应的日志 key
     """
+    if session_id:
+        session = await ensure_project_shell_session(project, session_id=session_id)
+        if session is None:
+            raise ProcessNotRunning()
+        return GenericResponse(
+            detail=get_project_shell_log_key(project.project_id, session_id=session.session_id)
+        )
+
     ensure_project_shell_log_storage(project.project_id)
+    active_session_id = ProjectShellSessionManager.get_active_session_id(project.project_id)
+    if active_session_id:
+        return GenericResponse(
+            detail=get_project_shell_log_key(project.project_id, session_id=active_session_id)
+        )
     return GenericResponse(detail=get_project_shell_log_key(project.project_id))
+
+
+@router.post("/terminal/resize", response_model=GenericResponse[str])
+async def resize_terminal(
+    cols: int,
+    rows: int,
+    session_id: Optional[str] = None,
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 调整实例维护终端的窗口尺寸
+    """
+    resized = await resize_project_shell_session(
+        project, cols=cols, rows=rows, session_id=session_id
+    )
+    if not resized:
+        session = await ensure_project_shell_session(project, session_id=session_id)
+        if session is not None:
+            await resize_project_shell_session(
+                project,
+                cols=cols,
+                rows=rows,
+                session_id=session.session_id,
+            )
+    return GenericResponse(detail="success")
 
 
 @router.get("/runtime/log-key", response_model=GenericResponse[str])
@@ -183,6 +315,7 @@ async def get_runtime_log_key(
 @router.post("/execute", response_model=GenericResponse[str])
 async def execute_command(
     command: str,
+    session_id: Optional[str] = None,
     project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
 ) -> GenericResponse[str]:
     """
@@ -195,7 +328,7 @@ async def execute_command(
         )
 
     try:
-        await execute_project_command(project, stripped)
+        await execute_project_command(project, stripped, session_id=session_id)
     except HTTPException:
         raise
     except Exception as err:
@@ -286,3 +419,160 @@ async def get_process_log(websocket: WebSocket):
     finally:
         if log_storage is not None:
             unregister_listener(log_storage)
+
+
+@router.websocket("/terminal/ws")
+async def project_terminal_socket(
+    websocket: WebSocket,
+):
+    await websocket.accept()
+
+    auth = await websocket_auth(
+        websocket, secret_key=Config.secret_key.get_secret_value()
+    )
+    if not auth:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    session = None
+    session_listener_registered = False
+
+    async def publish_log(log: ProcessLog):
+        await websocket.send_json({"type": "output", "data": log.message})
+
+    async def attach_session(project_id: str, session_id: Optional[str], create_new: bool = False):
+        nonlocal session, session_listener_registered
+        if session is not None and session_listener_registered:
+            try:
+                session.process.log_storage.unregister_listener(publish_log)
+            except Exception:
+                pass
+            session_listener_registered = False
+
+        project = get_nonebot_project_manager(project_id)
+        session = await ensure_project_shell_session(
+            project, session_id=session_id, create_new=create_new
+        )
+        if session is None:
+            return None
+
+        ProjectShellSessionManager.set_active_session(project_id, session.session_id)
+        session.process.log_storage.register_listener(publish_log)
+        session_listener_registered = True
+        await websocket.send_json(
+            {
+                "type": "ready",
+                "session_id": session.session_id,
+                "sessions": [_model_to_dict(item) for item in list_project_shell_sessions(project_id)],
+            }
+        )
+        history = session.process.log_storage.get_logs(count=200)
+        for item in history:
+            await websocket.send_json({"type": "output", "data": item.message})
+        return session
+
+    try:
+        while websocket.client_state == WebSocketState.CONNECTED:
+            recv = await websocket.receive_json()
+            message_type = recv.get("type")
+            project_id = str(recv.get("project_id") or "").strip()
+            requested_session_id = str(recv.get("session_id") or "").strip() or None
+
+            if message_type == "attach":
+                if not project_id:
+                    continue
+                await attach_session(project_id, requested_session_id)
+                continue
+
+            if message_type == "create":
+                if not project_id:
+                    continue
+                await attach_session(project_id, None, create_new=True)
+                continue
+
+            if message_type == "switch":
+                if not project_id or not requested_session_id:
+                    continue
+                await attach_session(project_id, requested_session_id)
+                continue
+
+            if message_type == "close":
+                if not project_id or not requested_session_id:
+                    continue
+                deleted = await ProjectShellSessionManager.stop_session(
+                    project_id, session_id=requested_session_id
+                )
+                if deleted:
+                    active_session_id = ProjectShellSessionManager.get_active_session_id(
+                        project_id
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "sessions",
+                            "session_id": active_session_id,
+                            "sessions": [
+                                _model_to_dict(item)
+                                for item in list_project_shell_sessions(project_id)
+                            ],
+                        }
+                    )
+                    if active_session_id:
+                        await attach_session(project_id, active_session_id)
+                    else:
+                        session = None
+                continue
+
+            if message_type == "list":
+                if not project_id:
+                    continue
+                await websocket.send_json(
+                    {
+                        "type": "sessions",
+                        "session_id": ProjectShellSessionManager.get_active_session_id(
+                            project_id
+                        ),
+                        "sessions": [
+                            _model_to_dict(item)
+                            for item in list_project_shell_sessions(project_id)
+                        ],
+                    }
+                )
+                continue
+
+            if message_type == "input":
+                if session is None:
+                    continue
+                data = str(recv.get("data") or "")
+                if data:
+                    await session.process.write_stdin(data.encode())
+                continue
+
+            if message_type == "resize":
+                if not project_id:
+                    continue
+                project = get_nonebot_project_manager(project_id)
+                cols = int(recv.get("cols") or 0)
+                rows = int(recv.get("rows") or 0)
+                await resize_project_shell_session(
+                    project,
+                    cols=cols,
+                    rows=rows,
+                    session_id=requested_session_id or (session.session_id if session else None),
+                )
+                continue
+
+            if message_type == "interrupt":
+                if session is None:
+                    continue
+                await session.process.interrupt()
+    except Exception as err:
+        logger.debug(f"Project Terminal: websocket exception {err=}")
+    finally:
+        if session is not None and session_listener_registered:
+            try:
+                session.process.log_storage.unregister_listener(publish_log)
+            except Exception:
+                pass

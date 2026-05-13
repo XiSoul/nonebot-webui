@@ -25,6 +25,7 @@ const sessionTokenExpireHours = ref<string | number>('24')
 const currentToken = ref('')
 const newToken = ref('')
 const confirmToken = ref('')
+const generatedLoginLink = ref('')
 
 const showCurrentToken = ref(false)
 const showNewToken = ref(false)
@@ -135,6 +136,17 @@ const createTargetUrl = (port: number, path: string) => {
   return target.toString()
 }
 
+const createLoginLink = (port: number, loginToken: string) => {
+  if (!loginToken) return ''
+  const target = new URL(window.location.href)
+  target.port = String(port)
+  target.pathname = '/login'
+  target.search = ''
+  target.hash = ''
+  target.searchParams.set('token', loginToken)
+  return target.toString()
+}
+
 const getRuleClass = (active: boolean, passed: boolean) => {
   if (!active) return 'border-base-content/10 bg-base-100 text-base-content/70'
   return passed
@@ -153,8 +165,19 @@ const resetTokenInputs = () => {
   showConfirmToken.value = false
 }
 
+const copyGeneratedLoginLink = async () => {
+  if (!generatedLoginLink.value) return
+  try {
+    await navigator.clipboard.writeText(generatedLoginLink.value)
+    toast.add('success', '登录链接已复制', '', 3000)
+  } catch {
+    toast.add('warning', '复制失败，请手动复制登录链接', '', 4000)
+  }
+}
+
 const loadSettings = async () => {
   loading.value = true
+  generatedLoginLink.value = ''
   const { data, error } = await getSecuritySettings()
   loading.value = false
 
@@ -254,6 +277,10 @@ const applySettings = async () => {
   const nextPort = data.service_port || Number(normalizedPort.value)
   const tokenChanged = data.token_changed
   const portChanged = data.port_changed
+  const nextLoginLink =
+    data.login_token && data.token_mode === 'permanent'
+      ? createLoginLink(nextPort, data.login_token)
+      : ''
 
   settings.value = {
     ...(settings.value ?? {
@@ -277,13 +304,17 @@ const applySettings = async () => {
   randomTokenExpireHours.value = String(data.random_token_expire_hours || 24)
   sessionTokenExpireHours.value = String(data.session_token_expire_hours || 24)
   resetTokenInputs()
+  generatedLoginLink.value = nextLoginLink
 
   if (tokenChanged) {
     clearAuthToken()
   }
 
   if (portChanged && data.restart_scheduled) {
-    const target = createTargetUrl(nextPort, tokenChanged ? '/login' : '/')
+    const target =
+      tokenChanged && data.token_mode === 'permanent' && nextLoginLink
+        ? nextLoginLink
+        : createTargetUrl(nextPort, tokenChanged ? '/login' : '/')
     toast.add('warning', `服务即将切换到 ${nextPort} 端口，页面将自动跳转`, '', 5000)
     window.setTimeout(() => {
       window.location.href = target
@@ -295,7 +326,11 @@ const applySettings = async () => {
     if (data.token_mode === 'random') {
       toast.add('warning', '请到 Docker 日志中查看新的随机登录凭证，然后重新登录', '', 6000)
     } else {
-      toast.add('info', '请使用新的永久登录凭证重新登录', '', 5000)
+      toast.add('info', '新的永久登录凭证已生效，页面将跳转到带凭证的登录链接', '', 5000)
+      window.setTimeout(() => {
+        window.location.href = nextLoginLink || createTargetUrl(nextPort, '/login')
+      }, 1200)
+      return
     }
     router.push('/login')
     return
@@ -601,6 +636,24 @@ onMounted(() => {
         <button class="btn btn-ghost" :disabled="loading || saving" @click="void loadSettings()">
           重新加载
         </button>
+      </div>
+
+      <div
+        v-if="generatedLoginLink"
+        class="rounded-xl border border-primary/20 bg-primary/5 p-4 flex flex-col gap-3"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <div class="font-semibold text-sm">新的登录链接</div>
+          <button class="btn btn-sm btn-primary text-base-100" type="button" @click="void copyGeneratedLoginLink()">
+            复制链接
+          </button>
+        </div>
+        <div class="text-xs opacity-70">
+          永久 token 修改成功后，这个链接可以像 NapCat 一样直接打开登录页并自动带入凭证。
+        </div>
+        <div class="rounded-lg bg-base-100 border border-base-content/10 px-3 py-3 font-mono text-xs break-all">
+          {{ generatedLoginLink }}
+        </div>
       </div>
     </div>
   </div>

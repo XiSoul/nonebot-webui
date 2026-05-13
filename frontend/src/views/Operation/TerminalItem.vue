@@ -2,15 +2,19 @@
 import { ProcessService, type ProcessLog } from '@/client/api'
 import { getAuthToken } from '@/client/auth'
 import {
+  createProjectTerminalSession,
   getProjectRuntimeLogKey,
-  getProjectTerminalLogKey,
-  openProjectTerminal
+  listProjectTerminalSessions,
+  type TerminalSessionInfo
 } from '@/client/process'
+import { resizeProjectTerminal } from '@/client/terminal'
 import { generateURLForWebUI, getErrorMessage } from '@/client/utils'
-import { getRuntimeState, isRuntimeActive, type RuntimeState } from '@/utils/runtimeState'
-import { useCustomStore, useNoneBotStore, useToastStore } from '@/stores'
-import { useWebSocket } from '@vueuse/core'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useNoneBotStore, useToastStore } from '@/stores'
+import { getRuntimeState, isRuntimeActive } from '@/utils/runtimeState'
+import { FitAddon } from '@xterm/addon-fit'
+import { Terminal, type ITerminalOptions } from '@xterm/xterm'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import '@xterm/xterm/css/xterm.css'
 
 const props = withDefaults(
   defineProps<{
@@ -21,1048 +25,928 @@ const props = withDefaults(
   }
 )
 
-type DownloadProgressSnapshot = {
-  label: string
-  percent: number
-  totalBytes: number | null
-  timestampMs: number
-}
+type TerminalThemeId = 'midnight' | 'graphite' | 'nord' | 'paper'
 
-type QuickCommand = {
-  id: string
-  label: string
-  command: string
-}
-
-type RecentCommand = {
-  id: string
-  command: string
+const TERMINAL_THEME_KEY = 'nonebot_terminal_theme'
+const TERMINAL_THEMES: Record<
+  TerminalThemeId,
+  { label: string; accent: string; theme: ITerminalOptions['theme'] }
+> = {
+  midnight: {
+    label: 'Midnight',
+    accent: 'from-cyan-400/30 via-sky-500/20 to-transparent',
+    theme: {
+      background: '#09111f',
+      foreground: '#e5edf7',
+      cursor: '#f8fafc',
+      selectionBackground: 'rgba(96, 165, 250, 0.24)',
+      black: '#0f172a',
+      red: '#f87171',
+      green: '#4ade80',
+      yellow: '#facc15',
+      blue: '#60a5fa',
+      magenta: '#f472b6',
+      cyan: '#22d3ee',
+      white: '#e2e8f0',
+      brightBlack: '#475569',
+      brightRed: '#fb7185',
+      brightGreen: '#86efac',
+      brightYellow: '#fde047',
+      brightBlue: '#93c5fd',
+      brightMagenta: '#f9a8d4',
+      brightCyan: '#67e8f9',
+      brightWhite: '#f8fafc'
+    }
+  },
+  graphite: {
+    label: 'Graphite',
+    accent: 'from-slate-300/20 via-slate-500/10 to-transparent',
+    theme: {
+      background: '#111315',
+      foreground: '#e7e5e4',
+      cursor: '#fafaf9',
+      selectionBackground: 'rgba(214, 211, 209, 0.22)',
+      black: '#1c1917',
+      red: '#f87171',
+      green: '#86efac',
+      yellow: '#fde68a',
+      blue: '#93c5fd',
+      magenta: '#f0abfc',
+      cyan: '#67e8f9',
+      white: '#e7e5e4',
+      brightBlack: '#57534e',
+      brightRed: '#fca5a5',
+      brightGreen: '#bbf7d0',
+      brightYellow: '#fef3c7',
+      brightBlue: '#bfdbfe',
+      brightMagenta: '#f5d0fe',
+      brightCyan: '#a5f3fc',
+      brightWhite: '#fafaf9'
+    }
+  },
+  nord: {
+    label: 'Nord',
+    accent: 'from-sky-300/25 via-blue-400/10 to-transparent',
+    theme: {
+      background: '#2e3440',
+      foreground: '#d8dee9',
+      cursor: '#eceff4',
+      selectionBackground: 'rgba(129, 161, 193, 0.24)',
+      black: '#3b4252',
+      red: '#bf616a',
+      green: '#a3be8c',
+      yellow: '#ebcb8b',
+      blue: '#81a1c1',
+      magenta: '#b48ead',
+      cyan: '#88c0d0',
+      white: '#e5e9f0',
+      brightBlack: '#4c566a',
+      brightRed: '#bf616a',
+      brightGreen: '#a3be8c',
+      brightYellow: '#ebcb8b',
+      brightBlue: '#81a1c1',
+      brightMagenta: '#b48ead',
+      brightCyan: '#8fbcbb',
+      brightWhite: '#eceff4'
+    }
+  },
+  paper: {
+    label: 'Paper',
+    accent: 'from-amber-300/20 via-orange-300/10 to-transparent',
+    theme: {
+      background: '#f7f4ec',
+      foreground: '#3f3f46',
+      cursor: '#0f172a',
+      cursorAccent: '#f7f4ec',
+      selectionBackground: 'rgba(217, 119, 6, 0.16)',
+      black: '#3f3f46',
+      red: '#dc2626',
+      green: '#15803d',
+      yellow: '#a16207',
+      blue: '#1d4ed8',
+      magenta: '#9333ea',
+      cyan: '#0f766e',
+      white: '#71717a',
+      brightBlack: '#71717a',
+      brightRed: '#ef4444',
+      brightGreen: '#22c55e',
+      brightYellow: '#ca8a04',
+      brightBlue: '#3b82f6',
+      brightMagenta: '#a855f7',
+      brightCyan: '#14b8a6',
+      brightWhite: '#18181b'
+    }
+  }
 }
 
 const store = useNoneBotStore()
-const customStore = useCustomStore()
 const toast = useToastStore()
-const runtimeState = computed<RuntimeState>(() => getRuntimeState(store.selectedBot))
-const runtimeActive = computed(() => isRuntimeActive(store.selectedBot))
 
-const logData = ref<ProcessLog[]>([])
-const logShowTable = ref<HTMLElement>()
-const quickCommandModal = ref<HTMLDialogElement>()
-const currentBot = ref('')
-const commandInput = ref('')
-const commandSending = ref(false)
-const currentTimeMs = ref(Date.now())
-const terminalCacheKey = computed(() =>
-  store.selectedBot?.project_id ? `terminalCache:${props.mode}:${store.selectedBot.project_id}` : ''
-)
-const MISSING_LOG_STORAGE_ERROR = 'Log storage not found.'
-const PROCESS_FINISHED_MESSAGE = 'Process finished.'
-const PROCESS_NOT_RUNNING_ERROR = 'Process is not running.'
-const PROCESS_NOT_FOUND_ERROR = 'Process not found.'
-const QUICK_COMMANDS_STORAGE_KEY = 'terminalQuickCommands:v1'
-const RECENT_COMMANDS_STORAGE_KEY = 'terminalRecentCommands:v1'
-const customQuickCommands = ref<QuickCommand[]>([])
-const recentCommands = ref<RecentCommand[]>([])
-const newQuickCommandLabel = ref('')
-const newQuickCommandCommand = ref('')
-let currentTimeTimer: ReturnType<typeof setInterval> | null = null
-const currentLogKey = ref('')
+const runtimeActive = computed(() => isRuntimeActive(store.selectedBot))
+const runtimeState = computed(() => getRuntimeState(store.selectedBot))
 const selectedProjectName = computed(() => store.selectedBot?.project_name || '未选择实例')
 const selectedProjectDir = computed(() => store.selectedBot?.project_dir || '未连接项目目录')
 const selectedProjectDirShort = computed(() => {
   const dir = selectedProjectDir.value
-  if (dir.length <= 52) return dir
-  return `...${dir.slice(-49)}`
+  if (dir.length <= 54) return dir
+  return `...${dir.slice(-51)}`
+})
+const projectInitial = computed(() => {
+  const source = selectedProjectName.value.trim()
+  return source ? source.slice(0, 1).toUpperCase() : 'N'
 })
 
-const resolveLogKey = async (projectId?: string) => {
+const currentLogKey = ref('')
+const logData = ref<ProcessLog[]>([])
+const runtimeLogWrap = ref<HTMLElement>()
+const terminalRoot = ref<HTMLElement>()
+const commandInputRef = ref<HTMLInputElement>()
+const commandInput = ref('')
+const statusText = ref('未连接')
+const sessionBusy = ref(false)
+const socketConnected = ref(false)
+const commandSending = ref(false)
+const shellSessions = ref<TerminalSessionInfo[]>([])
+const activeSessionId = ref('')
+const selectedTheme = ref<TerminalThemeId>(
+  (localStorage.getItem(TERMINAL_THEME_KEY) as TerminalThemeId) || 'midnight'
+)
+
+let termSocket: WebSocket | null = null
+let runtimeSocket: WebSocket | null = null
+let terminal: Terminal | null = null
+let fitAddon: FitAddon | null = null
+let resizeObserver: ResizeObserver | null = null
+let pendingAttachSessionId: string | null = null
+
+const canUseShellTerminal = computed(() => props.mode === 'shell' && Boolean(store.selectedBot))
+const canWriteCommand = computed(
+  () =>
+    canUseShellTerminal.value &&
+    socketConnected.value &&
+    !commandSending.value &&
+    Boolean(activeSessionId.value)
+)
+const canInterrupt = computed(() => canUseShellTerminal.value && socketConnected.value)
+const canManageSessions = computed(
+  () => props.mode === 'shell' && Boolean(store.selectedBot) && !sessionBusy.value
+)
+const activeTheme = computed(
+  () => TERMINAL_THEMES[selectedTheme.value] ?? TERMINAL_THEMES.midnight
+)
+const themeOptions = computed(() =>
+  Object.entries(TERMINAL_THEMES).map(([id, item]) => ({
+    id: id as TerminalThemeId,
+    label: item.label
+  }))
+)
+const runtimeStateLabel = computed(() => {
+  if (!store.selectedBot) return 'Detached'
+  if (runtimeState.value === 'running') return 'Running'
+  if (runtimeState.value === 'starting') return 'Starting'
+  return 'Stopped'
+})
+const terminalModeLabel = computed(() => {
+  if (!store.selectedBot) return '未选择实例'
+  if (props.mode === 'runtime') return '实例运行日志'
+  return 'Maintenance PTY'
+})
+const terminalSessionLabel = computed(() => {
+  if (!store.selectedBot) return 'Detached'
+  if (props.mode === 'runtime') return 'Runtime Stream'
+  const active = shellSessions.value.find((item) => item.session_id === activeSessionId.value)
+  return active?.title || 'Interactive PTY'
+})
+const terminalStatusTone = computed(() => {
+  if (!store.selectedBot) return 'badge-ghost'
+  if (props.mode === 'runtime') {
+    if (runtimeState.value === 'running') return 'badge-success text-base-100'
+    if (runtimeState.value === 'starting') return 'badge-warning'
+    return 'badge-ghost'
+  }
+  if (socketConnected.value) return 'badge-success text-base-100'
+  return runtimeActive.value ? 'badge-warning' : 'badge-error text-base-100'
+})
+const workspaceSummary = computed(() => {
+  if (!store.selectedBot) return '先选择一个实例，再连接维护终端或查看运行日志。'
+  if (props.mode === 'runtime') {
+    return '这里专注查看实例启动和运行过程，保留原始输出节奏，不接收交互输入。'
+  }
+  return '维护终端保持常驻 PTY，会把输入、回显、Ctrl+C 和窗口尺寸直接同步到当前项目。'
+})
+const connectionHint = computed(() => {
+  if (!store.selectedBot) return 'Select a project to start'
+  if (props.mode === 'runtime') return 'Attached to runtime log stream'
+  if (!shellSessions.value.length) return 'Create a PTY session to begin'
+  if (socketConnected.value) return 'Shell is ready for interactive commands'
+  return 'Waiting for PTY session attachment'
+})
+const commandPlaceholder = computed(() => {
+  if (props.mode !== 'shell') return '当前页面仅展示实例运行日志'
+  if (!store.selectedBot) return '请先选择实例'
+  if (!socketConnected.value) return '终端连接中断，请等待重新附着'
+  return '输入命令后按 Enter，例如 python -m pip install -U xxx'
+})
+const sidebarStats = computed(() => [
+  { label: 'Project', value: selectedProjectName.value },
+  { label: 'Runtime', value: runtimeStateLabel.value },
+  { label: 'Sessions', value: String(shellSessions.value.length || 0) },
+  { label: 'Status', value: statusText.value }
+])
+const activeSession = computed(
+  () => shellSessions.value.find((item) => item.session_id === activeSessionId.value) ?? null
+)
+const activeSessionCreatedAt = computed(() => {
+  if (!activeSession.value?.created_at) return '未建立'
+  return new Date(activeSession.value.created_at * 1000).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+})
+const quickCommands = computed(() => {
+  if (props.mode !== 'shell') return []
+  return [
+    { label: 'nb run', command: 'nb run' },
+    { label: 'pip upgrade', command: 'python -m pip install -U pip' },
+    {
+      label: 'playwright',
+      command: 'python -m playwright install chromium'
+    }
+  ]
+})
+const workspaceHeightClass = computed(() =>
+  props.mode === 'shell' ? 'lg:h-[44rem]' : 'lg:h-[36rem]'
+)
+const terminalPaneHeightClass = computed(() =>
+  props.mode === 'shell' ? 'h-[32rem] lg:h-full' : 'h-[28rem] lg:h-full'
+)
+
+const formatSessionTime = (value: number) =>
+  new Date(value * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+const scrollRuntimeToBottom = async () => {
+  await nextTick()
+  if (runtimeLogWrap.value) {
+    runtimeLogWrap.value.scrollTop = runtimeLogWrap.value.scrollHeight
+  }
+}
+
+const resolveRuntimeLogKey = async (projectId?: string) => {
   const id = projectId ?? store.selectedBot?.project_id
   if (!id) {
     currentLogKey.value = ''
     return ''
   }
 
-  if (props.mode === 'runtime') {
-    const { data, error } = await getProjectRuntimeLogKey(id)
-    if (error || !data?.detail) {
-      currentLogKey.value = id
-      return currentLogKey.value
-    }
-    currentLogKey.value = data.detail
-    return data.detail
-  }
-
-  const { data, error } = await getProjectTerminalLogKey(id)
+  const { data, error } = await getProjectRuntimeLogKey(id)
   if (error || !data?.detail) {
-    currentLogKey.value = `${id}:shell`
+    currentLogKey.value = id
     return currentLogKey.value
   }
   currentLogKey.value = data.detail
-  return data.detail
+  return currentLogKey.value
 }
 
-const parseSizeToBytes = (size: number, unit: string) => {
-  const normalizedUnit = unit.trim().toUpperCase()
-  const unitMap: Record<string, number> = {
-    B: 1,
-    KB: 1000,
-    MB: 1000 ** 2,
-    GB: 1000 ** 3,
-    TB: 1000 ** 4,
-    KIB: 1024,
-    MIB: 1024 ** 2,
-    GIB: 1024 ** 3,
-    TIB: 1024 ** 4
-  }
+const loadRuntimeHistory = async (logId?: string) => {
+  const target = logId ?? currentLogKey.value
+  if (!target) return
 
-  return size * (unitMap[normalizedUnit] ?? 1)
-}
-
-const parseLogTimeToMs = (value?: string) => {
-  if (!value) return null
-
-  const match = value.match(/^(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/)
-  if (!match) return null
-
-  const now = new Date()
-  now.setHours(
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    Number((match[4] ?? '0').padEnd(3, '0'))
-  )
-
-  return now.getTime()
-}
-
-const formatBytesPerSecond = (bytesPerSecond: number) => {
-  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return null
-
-  const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s']
-  let value = bytesPerSecond
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-
-  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2
-  return `${value.toFixed(digits)} ${units[unitIndex]}`
-}
-
-const formatAge = (ageMs: number) => {
-  const totalSeconds = Math.max(0, Math.floor(ageMs / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s 前`
-
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return seconds ? `${minutes}m ${seconds}s 前` : `${minutes}m 前`
-}
-
-const extractDownloadSnapshots = (logs: ProcessLog[]) => {
-  const snapshots: DownloadProgressSnapshot[] = []
-  let currentLabel = '下载任务'
-
-  for (const item of logs) {
-    const message = String(item.message ?? '')
-    const downloadMatch = message.match(/Downloading\s+(.+?)\s+from\s+/i)
-    if (downloadMatch?.[1]) {
-      currentLabel = downloadMatch[1].trim()
-    }
-
-    const progressMatch = message.match(
-      /Progress:\s*\|.*?(\d+(?:\.\d+)?)%\s+of\s+(\d+(?:\.\d+)?)\s*([KMGT]?i?B)/i
-    )
-    if (!progressMatch) continue
-
-    const timestampMs = parseLogTimeToMs(item.time) ?? currentTimeMs.value
-    const percent = Number(progressMatch[1])
-    const totalBytes = parseSizeToBytes(Number(progressMatch[2]), progressMatch[3])
-
-    snapshots.push({
-      label: currentLabel,
-      percent,
-      totalBytes: Number.isFinite(totalBytes) ? totalBytes : null,
-      timestampMs
-    })
-  }
-
-  return snapshots
-}
-
-const isDownloadStartMessage = (message: string) => /Downloading\s+.+\s+from\s+/i.test(message)
-const isDownloadProgressMessage = (message: string) => /Progress:\s*\|.*?\d+(?:\.\d+)?%\s+of\s+\d+(?:\.\d+)?\s*[KMGT]?i?B/i.test(message)
-const isDownloadRetryMessage = (message: string) => /retrying with official mirror/i.test(message)
-const isDownloadFailureMessage = (message: string) => /Failed to install browsers|Download failed|Download failure/i.test(message)
-const isDependencyInstallMessage = (message: string) => /Installing dependencies\.\.\./i.test(message)
-const isLocalCommandEcho = (message?: string) => String(message ?? '').trimStart().startsWith('>')
-
-const getDownloadRowKind = (message?: string) => {
-  if (isLocalCommandEcho(message)) return ''
-
-  const text = String(message ?? '')
-  if (isDownloadProgressMessage(text)) return 'progress'
-  if (isDownloadStartMessage(text)) return 'start'
-  if (isDownloadRetryMessage(text)) return 'retry'
-  if (isDependencyInstallMessage(text)) return 'deps'
-  if (isDownloadFailureMessage(text)) return 'failure'
-  return ''
-}
-
-const scrollToBottom = async () => {
-  await nextTick()
-  if (logShowTable.value) {
-    logShowTable.value.scrollTop = logShowTable.value.scrollHeight
-  }
-}
-
-const appendLocalLog = async (message: string) => {
-  logData.value.push({ message })
-  await scrollToBottom()
-}
-
-const restoreCachedLogs = () => {
-  const cacheKey = terminalCacheKey.value
-  if (!cacheKey) return
-  try {
-    const raw = sessionStorage.getItem(cacheKey)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return
-    logData.value = parsed.slice(-400)
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const persistCachedLogs = () => {
-  const cacheKey = terminalCacheKey.value
-  if (!cacheKey) return
-  try {
-    sessionStorage.setItem(cacheKey, JSON.stringify(logData.value.slice(-400)))
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const fillCommand = (value: string) => {
-  commandInput.value = value
-}
-
-const saveCustomQuickCommands = () => {
-  try {
-    localStorage.setItem(QUICK_COMMANDS_STORAGE_KEY, JSON.stringify(customQuickCommands.value))
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const loadCustomQuickCommands = () => {
-  try {
-    const raw = localStorage.getItem(QUICK_COMMANDS_STORAGE_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return
-    customQuickCommands.value = parsed
-      .map((item) => ({
-        id: String(item?.id ?? `${Date.now()}-${Math.random()}`),
-        label: String(item?.label ?? '').trim(),
-        command: String(item?.command ?? '').trim()
-      }))
-      .filter((item) => item.label && item.command)
-      .slice(0, 12)
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const saveRecentCommands = () => {
-  try {
-    localStorage.setItem(RECENT_COMMANDS_STORAGE_KEY, JSON.stringify(recentCommands.value))
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const loadRecentCommands = () => {
-  try {
-    const raw = localStorage.getItem(RECENT_COMMANDS_STORAGE_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return
-    recentCommands.value = parsed
-      .map((item) => ({
-        id: String(item?.id ?? `${Date.now()}-${Math.random()}`),
-        command: String(item?.command ?? '').trim()
-      }))
-      .filter((item) => item.command)
-      .slice(0, 8)
-  } catch {
-    // ignore cache errors
-  }
-}
-
-const pushRecentCommand = (command: string) => {
-  const normalized = command.trim()
-  if (!normalized) return
-  recentCommands.value = [
-    { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, command: normalized },
-    ...recentCommands.value.filter((item) => item.command !== normalized)
-  ].slice(0, 8)
-  saveRecentCommands()
-}
-
-const closeQuickCommandModal = () => {
-  quickCommandModal.value?.close()
-  newQuickCommandLabel.value = ''
-  newQuickCommandCommand.value = ''
-}
-
-const openQuickCommandModal = () => {
-  newQuickCommandLabel.value = ''
-  newQuickCommandCommand.value = ''
-  quickCommandModal.value?.showModal()
-}
-
-const addQuickCommand = () => {
-  const label = newQuickCommandLabel.value.trim()
-  const command = newQuickCommandCommand.value.trim()
-  if (!label || !command) {
-    toast.add('warning', '请填写快捷命令名称和命令内容', '', 3000)
-    return
-  }
-
-  customQuickCommands.value.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    label: label.slice(0, 20),
-    command
-  })
-  saveCustomQuickCommands()
-  closeQuickCommandModal()
-  toast.add('success', '快捷命令已保存到本地', '', 3000)
-}
-
-const removeQuickCommand = (id: string) => {
-  customQuickCommands.value = customQuickCommands.value.filter((item) => item.id !== id)
-  saveCustomQuickCommands()
-}
-
-const subscribeLog = (projectId?: string) => {
-  const logKey = projectId ?? currentLogKey.value
-  if (!logKey) return
-  send(JSON.stringify({ type: 'log', log_key: logKey }))
-  currentBot.value = logKey
-}
-
-const getHistoryLogs = async (projectId?: string) => {
-  const logId = projectId ?? currentLogKey.value
-  if (!logId) return
-
-  const getLogCount = 200
   const { data, error } = await ProcessService.getLogHistoryV1ProcessLogHistoryGet({
     query: {
-      log_count: getLogCount,
-      log_id: logId
+      log_count: 300,
+      log_id: target
     }
   })
 
   if (error) {
-    const errorDetail =
-      typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail ?? '')
-
-    if (errorDetail === MISSING_LOG_STORAGE_ERROR) {
-      if (currentLogKey.value === logId) {
-        logData.value = []
-      }
-      return
-    }
-    toast.add("warning", `Get history logs failed: ${errorDetail}`, "", 5000)
+    toast.add('warning', `读取运行日志失败: ${getErrorMessage(error)}`, '', 4000)
     return
   }
 
-  if (data) {
-    if (currentLogKey.value !== logId) return
-    logData.value = data.detail
-    await scrollToBottom()
+  logData.value = data?.detail ?? []
+  await scrollRuntimeToBottom()
+}
+
+const subscribeRuntimeLog = (send: (value: string) => void, logKey: string) => {
+  if (!logKey) return
+  send(JSON.stringify({ type: 'log', log_key: logKey }))
+}
+
+const disconnectResizeObserver = () => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
   }
 }
 
-const syncSelectedBotStatus = async () => {
-  if (!store.selectedBot?.project_id) return
-  await store.loadBots()
+const teardownRuntimeSocket = () => {
+  if (runtimeSocket) {
+    runtimeSocket.close()
+    runtimeSocket = null
+  }
 }
 
-const ensureStoppedProjectTerminal = async (projectId?: string) => {
-  if (props.mode !== 'shell') return true
+const syncSessions = (sessions: TerminalSessionInfo[] = [], nextActiveId?: string | null) => {
+  shellSessions.value = sessions
+  if (nextActiveId) {
+    activeSessionId.value = nextActiveId
+    return
+  }
+  const active = sessions.find((item) => item.is_active)
+  activeSessionId.value = active?.session_id || sessions[0]?.session_id || ''
+}
+
+const teardownTermSocket = () => {
+  if (termSocket) {
+    termSocket.close()
+    termSocket = null
+  }
+  socketConnected.value = false
+  statusText.value = '未连接'
+  activeSessionId.value = ''
+  shellSessions.value = []
+  pendingAttachSessionId = null
+  disconnectResizeObserver()
+}
+
+const disposeTerminal = () => {
+  disconnectResizeObserver()
+  fitAddon = null
+  if (terminal) {
+    terminal.dispose()
+    terminal = null
+  }
+}
+
+const applyThemeToTerminal = () => {
+  localStorage.setItem(TERMINAL_THEME_KEY, selectedTheme.value)
+  if (terminal) {
+    terminal.options.theme = { ...activeTheme.value.theme }
+  }
+}
+
+const attachTerminalResize = (projectId: string) => {
+  if (!terminalRoot.value || !terminal || !fitAddon) return
+  disconnectResizeObserver()
+
+  const sendResize = async () => {
+    fitAddon?.fit()
+    const cols = terminal?.cols ?? 0
+    const rows = terminal?.rows ?? 0
+    if (cols > 0 && rows > 0) {
+      await resizeProjectTerminal(projectId, cols, rows, activeSessionId.value || undefined)
+      termSocket?.send(
+        JSON.stringify({
+          type: 'resize',
+          project_id: projectId,
+          session_id: activeSessionId.value || undefined,
+          cols,
+          rows
+        })
+      )
+    }
+  }
+
+  resizeObserver = new ResizeObserver(() => {
+    void sendResize()
+  })
+  resizeObserver.observe(terminalRoot.value)
+  void sendResize()
+}
+
+const ensureTerminal = () => {
+  if (!terminalRoot.value || terminal) return
+
+  terminal = new Terminal({
+    cursorBlink: true,
+    fontFamily: '"Cascadia Mono", "Fira Code", "Consolas", monospace',
+    fontSize: 13,
+    lineHeight: 1.35,
+    convertEol: false,
+    theme: { ...activeTheme.value.theme }
+  })
+
+  fitAddon = new FitAddon()
+  terminal.loadAddon(fitAddon)
+  terminal.open(terminalRoot.value)
+  fitAddon.fit()
+
+  terminal.onData((value) => {
+    if (!termSocket || termSocket.readyState !== WebSocket.OPEN) return
+    termSocket.send(JSON.stringify({ type: 'input', data: value }))
+  })
+}
+
+const focusCommandInput = async () => {
+  await nextTick()
+  commandInputRef.value?.focus()
+}
+
+const sendTerminalControl = (payload: Record<string, unknown>) => {
+  if (!termSocket || termSocket.readyState !== WebSocket.OPEN) return
+  termSocket.send(JSON.stringify(payload))
+}
+
+const markActiveSession = (sessionId: string) => {
+  activeSessionId.value = sessionId
+  shellSessions.value = shellSessions.value.map((item) => ({
+    ...item,
+    is_active: item.session_id === sessionId
+  }))
+}
+
+const refreshTerminalSessions = async (projectId?: string) => {
   const id = projectId ?? store.selectedBot?.project_id
-  if (!id) return false
+  if (!id || props.mode !== 'shell') return
 
-  const { error } = await openProjectTerminal(id)
-  if (error) {
-    toast.add('error', `连接项目终端失败: ${getErrorMessage(error)}`, '', 5000)
-    return false
+  const { data, error } = await listProjectTerminalSessions(id)
+  if (!error && data?.detail) {
+    syncSessions(data.detail)
   }
-  return true
 }
 
-const isProcessUnavailableError = (error: unknown) => {
-  const message = getErrorMessage(error, '')
-  return message.includes(PROCESS_NOT_RUNNING_ERROR) || message.includes(PROCESS_NOT_FOUND_ERROR)
-}
+const ensureDefaultShellSession = async (projectId: string) => {
+  await refreshTerminalSessions(projectId)
+  if (shellSessions.value.length > 0) return shellSessions.value[0]?.session_id || ''
 
-const writeToProcess = async (content: string, displayEcho?: string) => {
-  if (props.mode !== 'shell') return false
-  if (!store.selectedBot) return
-  if (!runtimeActive.value) {
-    const ready = await ensureStoppedProjectTerminal(store.selectedBot.project_id)
-    if (!ready) return false
+  const { data, error } = await createProjectTerminalSession(projectId)
+  if (error || !data?.detail) {
+    toast.add('error', `创建终端会话失败: ${getErrorMessage(error)}`, '', 5000)
+    return ''
   }
 
-  if (displayEcho) await appendLocalLog(displayEcho)
+  shellSessions.value = [data.detail]
+  markActiveSession(data.detail.session_id)
+  return data.detail.session_id
+}
 
-  commandSending.value = true
-  const { error } = await ProcessService.writeToProcessV1ProcessWritePost({
-    query: {
-      project_id: store.selectedBot.project_id,
-      content
+const connectShellTerminal = async (projectId?: string, preferredSessionId?: string) => {
+  if (props.mode !== 'shell') return
+
+  const id = projectId ?? store.selectedBot?.project_id
+  if (!id) return
+
+  const ensuredSessionId = await ensureDefaultShellSession(id)
+  const targetSessionId =
+    preferredSessionId || activeSessionId.value || ensuredSessionId || shellSessions.value[0]?.session_id || ''
+  if (!targetSessionId) {
+    statusText.value = '未创建会话'
+    return
+  }
+
+  ensureTerminal()
+  teardownTermSocket()
+  await refreshTerminalSessions(id)
+  pendingAttachSessionId = targetSessionId
+
+  termSocket = new WebSocket(generateURLForWebUI('/v1/process/terminal/ws', true))
+  statusText.value = '连接中'
+
+  termSocket.addEventListener('open', () => {
+    const token = getAuthToken()
+    if (token) {
+      termSocket?.send(token)
+    }
+    terminal?.reset()
+    sendTerminalControl({
+      type: 'attach',
+      project_id: id,
+      session_id: targetSessionId
+    })
+  })
+
+  termSocket.addEventListener('message', (event) => {
+    try {
+      const payload = JSON.parse(String(event.data))
+      if (payload.type === 'ready') {
+        syncSessions(payload.sessions ?? [], payload.session_id)
+        if (payload.session_id) {
+          markActiveSession(payload.session_id)
+        }
+        pendingAttachSessionId = null
+        socketConnected.value = true
+        statusText.value = '已连接'
+        attachTerminalResize(id)
+        void focusCommandInput()
+        return
+      }
+      if (payload.type === 'sessions') {
+        syncSessions(payload.sessions ?? [], payload.session_id)
+        return
+      }
+      if (payload.type === 'output' && typeof payload.data === 'string') {
+        terminal?.write(payload.data)
+      }
+    } catch {
+      terminal?.write(String(event.data))
     }
   })
-  commandSending.value = false
 
-  if (error) {
-    if (isProcessUnavailableError(error)) {
-      await syncSelectedBotStatus()
-      if (!isRuntimeActive(store.selectedBot)) {
-        const ready = await ensureStoppedProjectTerminal(store.selectedBot.project_id)
-        if (!ready) return false
+  termSocket.addEventListener('close', () => {
+    socketConnected.value = false
+    statusText.value = '已断开'
+    pendingAttachSessionId = null
+    disconnectResizeObserver()
+  })
 
-        commandSending.value = true
-        const retry = await ProcessService.writeToProcessV1ProcessWritePost({
-          query: {
-            project_id: store.selectedBot.project_id,
-            content
-          }
-        })
-        commandSending.value = false
+  termSocket.addEventListener('error', () => {
+    socketConnected.value = false
+    statusText.value = '连接失败'
+  })
+}
 
-        if (retry.error) {
-          await appendLocalLog(`命令发送失败：${getErrorMessage(retry.error)}`)
-          toast.add('error', `Send command failed: ${getErrorMessage(retry.error)}`, '', 5000)
-          return false
-        }
-        return true
-      }
-      return false
+const createShellSession = async () => {
+  const projectId = store.selectedBot?.project_id
+  if (!projectId || !canManageSessions.value) return
+
+  sessionBusy.value = true
+  try {
+    const { data, error } = await createProjectTerminalSession(projectId)
+    if (error || !data?.detail) {
+      toast.add('error', `创建终端会话失败: ${getErrorMessage(error)}`, '', 5000)
+      return
     }
-    await appendLocalLog(`命令发送失败：${getErrorMessage(error)}`)
-    toast.add('error', `Send command failed: ${getErrorMessage(error)}`, '', 5000)
-    return false
+    shellSessions.value = [...shellSessions.value, data.detail]
+    markActiveSession(data.detail.session_id)
+    if (termSocket?.readyState === WebSocket.OPEN) {
+      pendingAttachSessionId = data.detail.session_id
+      terminal?.reset()
+      sendTerminalControl({
+        type: 'switch',
+        project_id: projectId,
+        session_id: data.detail.session_id
+      })
+    } else {
+      await connectShellTerminal(projectId, data.detail.session_id)
+    }
+  } finally {
+    sessionBusy.value = false
   }
+}
 
-  return true
+const switchShellSession = async (sessionId: string) => {
+  const projectId = store.selectedBot?.project_id
+  if (!projectId || !sessionId || sessionId === activeSessionId.value || sessionBusy.value) return
+
+  sessionBusy.value = true
+  try {
+    markActiveSession(sessionId)
+    pendingAttachSessionId = sessionId
+    terminal?.reset()
+    sendTerminalControl({
+      type: 'switch',
+      project_id: projectId,
+      session_id: sessionId
+    })
+  } finally {
+    sessionBusy.value = false
+  }
+}
+
+const closeShellSession = async (sessionId: string) => {
+  const projectId = store.selectedBot?.project_id
+  if (!projectId || !sessionId || sessionBusy.value) return
+
+  sessionBusy.value = true
+  try {
+    terminal?.reset()
+    sendTerminalControl({
+      type: 'close',
+      project_id: projectId,
+      session_id: sessionId
+    })
+  } finally {
+    sessionBusy.value = false
+  }
+}
+
+const connectRuntimeLog = async (projectId?: string) => {
+  if (props.mode !== 'runtime') return
+
+  const id = projectId ?? store.selectedBot?.project_id
+  if (!id) return
+
+  const logKey = await resolveRuntimeLogKey(id)
+  await loadRuntimeHistory(logKey)
+  teardownRuntimeSocket()
+
+  runtimeSocket = new WebSocket(generateURLForWebUI('/v1/process/log/ws', true))
+
+  runtimeSocket.addEventListener('open', () => {
+    const token = getAuthToken()
+    if (token) {
+      runtimeSocket?.send(token)
+    }
+    subscribeRuntimeLog((value) => runtimeSocket?.send(value), logKey)
+  })
+
+  runtimeSocket.addEventListener('message', async (event) => {
+    try {
+      const payload = JSON.parse(String(event.data)) as ProcessLog
+      logData.value.push(payload)
+      await scrollRuntimeToBottom()
+    } catch {
+      // ignore malformed runtime log payload
+    }
+  })
 }
 
 const sendCommand = async () => {
-  if (props.mode !== 'shell') return
+  if (!canWriteCommand.value) return
+
   const command = commandInput.value.trim()
   if (!command) return
 
-  if (runtimeActive.value && status.value !== 'OPEN') {
-    await syncSelectedBotStatus()
-    if (isRuntimeActive(store.selectedBot)) {
-      toast.add('warning', '实例运行中，但终端连接已断开，请先重连。', '', 3000)
-      return
-    }
-  }
-
-  const sent = await writeToProcess(`${command}\n`, `> ${command}`)
-  if (sent) {
-    pushRecentCommand(command)
-    commandInput.value = ''
-  }
-}
-
-const sendInterrupt = async () => {
-  if (props.mode !== 'shell') return
-  if (!store.selectedBot) return
-
   commandSending.value = true
-  const { error } = await ProcessService.interruptProcessV1ProcessInterruptPost({
-    query: {
-      project_id: store.selectedBot.project_id
-    }
-  })
+  termSocket?.send(JSON.stringify({ type: 'input', data: `${command}\n` }))
+  commandInput.value = ''
   commandSending.value = false
-
-  if (error) {
-    toast.add('error', `Send interrupt failed: ${getErrorMessage(error)}`, '', 5000)
-    return
-  }
-
-  await appendLocalLog('^C')
+  await focusCommandInput()
 }
 
-const { status, data, close, open, send } = useWebSocket<ProcessLog>(
-  generateURLForWebUI("/v1/process/log/ws", true),
-  {
-    immediate: false,
-    autoReconnect: {
-      retries: 5,
-      delay: 1000
-    },
-    onConnected(ws) {
-      const token = getAuthToken()
-      ws.send(token)
-      subscribeLog()
-      void getHistoryLogs()
-
-      if (customStore.isDebug) {
-        toast.add('success', 'Debug: terminal websocket connected.', 'TerminalItem.vue', 5000)
-      }
-    },
-    onDisconnected() {
-      void syncSelectedBotStatus()
-      if (!customStore.isDebug) return
-      toast.add('warning', 'Debug: terminal websocket disconnected.', 'TerminalItem.vue', 5000)
-    }
+const primeCommand = async (command: string, runImmediately = false) => {
+  commandInput.value = command
+  await focusCommandInput()
+  if (runImmediately && canWriteCommand.value) {
+    await sendCommand()
   }
-)
+}
 
-const canWriteCommand = computed(
-  () =>
-    props.mode === 'shell' &&
-    Boolean(store.selectedBot) &&
-    (!runtimeActive.value || status.value === 'OPEN') &&
-    !commandSending.value
-)
-const canInterrupt = computed(
-  () =>
-    props.mode === 'shell' &&
-    Boolean(store.selectedBot) &&
-    (!runtimeActive.value || status.value === 'OPEN') &&
-    !commandSending.value
-)
-const terminalStatusTone = computed(() => {
-  if (!store.selectedBot) return 'badge-ghost'
-  if (status.value === 'OPEN') return 'badge-success text-base-100'
-  return runtimeActive.value ? 'badge-warning' : 'badge-error text-base-100'
+const sendInterrupt = () => {
+  if (!canInterrupt.value) return
+  termSocket?.send(JSON.stringify({ type: 'interrupt' }))
+}
+
+watch(selectedTheme, () => {
+  applyThemeToTerminal()
 })
-const terminalStatusText = computed(() => {
-  if (!store.selectedBot) return '未选择实例'
-  if (status.value === 'OPEN') return '已连接'
-  return runtimeActive.value ? '等待重连' : '未连接'
-})
-const terminalModeLabel = computed(() => {
-  if (!store.selectedBot) return '未选择实例'
-  if (props.mode === 'runtime') return '实例运行日志'
-  if (runtimeActive.value) {
-    return status.value === 'OPEN' ? '并行 Shell' : '等待重连'
-  }
-  return 'Shell 会话'
-})
-const terminalSessionLabel = computed(() => {
-  if (!store.selectedBot) return 'Detached'
-  if (props.mode === 'runtime') return 'Runtime Stream'
-  return runtimeActive.value ? 'Parallel Shell' : 'Maintenance Shell'
-})
-const terminalSummary = computed(() => {
-  if (!store.selectedBot) return '请先选择一个实例，再附着日志流或维护 Shell。'
-  if (props.mode === 'runtime') {
-    return '这里专注观察实例输出、启动过程和异常日志，不直接发送维护命令。'
-  }
-  if (runtimeActive.value) {
-    return '实例运行中，当前 Shell 会并行附着，适合执行依赖修复、代理排查和浏览器安装。'
-  }
-  return '实例停止时会维持一个常驻维护 Shell，适合手动执行 pip、playwright install、nb run 等命令。'
-})
-const terminalMetrics = computed(() => [
-  { label: '实例', value: selectedProjectName.value },
-  { label: '模式', value: terminalSessionLabel.value },
-  { label: '日志', value: `${logData.value.length} 行` }
-])
-const commandDeck = computed<QuickCommand[]>(() => [
-  { id: 'builtin-pip', label: '安装依赖', command: 'python -m pip install -U ' },
-  { id: 'builtin-playwright', label: '装 Chromium', command: 'python -m playwright install chromium' },
-  { id: 'builtin-nb-run', label: 'nb run', command: 'nb run' },
-  ...customQuickCommands.value
-])
-const commandPlaceholder = computed(() => {
-  if (props.mode !== 'shell') return '当前页面仅展示实例运行日志'
-  if (!store.selectedBot) return '请先选择实例'
-  if (runtimeActive.value) {
-    if (status.value === 'OPEN') return '输入命令，例如 pip install、playwright install、nb run'
-    return '实例运行中，但 Shell 连接已断开，请先重连或等待状态同步'
-  }
-  return '输入命令，例如 pip install、playwright install、nb run'
-})
-
-const downloadProgressState = computed(() => {
-  const snapshots = extractDownloadSnapshots(logData.value)
-  const latest = snapshots.length ? snapshots[snapshots.length - 1] : null
-  if (!latest) return null
-
-  const ageMs = currentTimeMs.value - latest.timestampMs
-  if (ageMs > 5 * 60 * 1000 || latest.percent >= 100) return null
-
-  const previous = [...snapshots]
-    .reverse()
-    .find(
-      (snapshot) =>
-        snapshot !== latest &&
-        snapshot.label === latest.label &&
-        snapshot.totalBytes === latest.totalBytes &&
-        snapshot.percent < latest.percent
-    )
-
-  let speedText: string | null = null
-  if (previous && latest.totalBytes) {
-    const timeDiffSeconds = (latest.timestampMs - previous.timestampMs) / 1000
-    const byteDiff = latest.totalBytes * ((latest.percent - previous.percent) / 100)
-    if (timeDiffSeconds > 0 && byteDiff > 0) {
-      speedText = formatBytesPerSecond(byteDiff / timeDiffSeconds)
-    }
-  }
-
-  return {
-    label: latest.label,
-    percentValue: latest.percent,
-    percentText: `${latest.percent.toFixed(latest.percent >= 100 ? 0 : 1).replace(/\.0$/, '')}%`,
-    speedText,
-    ageText: formatAge(ageMs),
-    stalled: ageMs > 15000
-  }
-})
-
-onMounted(async () => {
-  loadCustomQuickCommands()
-  loadRecentCommands()
-  restoreCachedLogs()
-  currentTimeTimer = setInterval(() => {
-    currentTimeMs.value = Date.now()
-  }, 1000)
-
-  if (!store.selectedBot) return
-  const logKey = await resolveLogKey(store.selectedBot.project_id)
-  await getHistoryLogs(logKey)
-  if (props.mode === 'shell' && !runtimeActive.value) {
-    await ensureStoppedProjectTerminal(store.selectedBot.project_id)
-  }
-  open()
-})
-
-onUnmounted(() => {
-  if (currentTimeTimer) {
-    clearInterval(currentTimeTimer)
-    currentTimeTimer = null
-  }
-  close()
-})
-
-watch(
-  () => data.value,
-  async (rawData) => {
-    if (!rawData) return
-
-    const parsedData: ProcessLog = JSON.parse(rawData.toString())
-    logData.value.push(parsedData)
-    if (parsedData.message === PROCESS_FINISHED_MESSAGE) {
-      await syncSelectedBotStatus()
-    }
-    persistCachedLogs()
-    await scrollToBottom()
-  }
-)
-
-watch(
-  () => status.value,
-  async (newStatus) => {
-    if (newStatus !== 'OPEN') return
-    subscribeLog()
-    await getHistoryLogs()
-  }
-)
 
 watch(
   () => store.selectedBot?.project_id,
   async (projectId) => {
-    if (!projectId) {
-      currentLogKey.value = ''
-      currentBot.value = ''
-      logData.value = []
-      close()
-      return
-    }
+    teardownRuntimeSocket()
+    teardownTermSocket()
+    disposeTerminal()
+    logData.value = []
+    currentLogKey.value = ''
+    commandInput.value = ''
 
-    const nextLogKey = await resolveLogKey(projectId)
-    if (nextLogKey !== currentBot.value) {
-      currentBot.value = nextLogKey
-      restoreCachedLogs()
-      await getHistoryLogs(nextLogKey)
-      if (props.mode === 'shell' && !isRuntimeActive(store.selectedBot)) {
-        await ensureStoppedProjectTerminal(projectId)
-      }
-    }
+    if (!projectId) return
 
-    if (status.value !== 'OPEN') {
-      open()
+    if (props.mode === 'shell') {
+      await nextTick()
+      await connectShellTerminal(projectId)
     } else {
-      subscribeLog(nextLogKey)
-      await getHistoryLogs(nextLogKey)
+      await connectRuntimeLog(projectId)
     }
-  }
+  },
+  { immediate: true }
 )
 
 watch(
   () => runtimeState.value,
-  async (state) => {
-    const projectId = store.selectedBot?.project_id
-    if (!projectId) return
-    const logKey = await resolveLogKey(projectId)
-
-    if (props.mode === 'runtime') {
-      if (status.value === 'OPEN') {
-        subscribeLog(logKey)
-        await getHistoryLogs(logKey)
-      }
-      return
-    }
-
-    if (state === 'running' || state === 'starting') {
-      await getHistoryLogs(logKey)
-      if (status.value !== 'OPEN') {
-        open()
-      } else {
-        subscribeLog(logKey)
-      }
-      return
-    }
-
-    await ensureStoppedProjectTerminal(projectId)
-    if (status.value === 'OPEN') {
-      subscribeLog(logKey)
-      await getHistoryLogs(logKey)
-    }
+  async () => {
+    if (props.mode !== 'runtime' || !store.selectedBot?.project_id) return
+    const logKey = await resolveRuntimeLogKey(store.selectedBot.project_id)
+    await loadRuntimeHistory(logKey)
   }
 )
 
-watch(
-  () => logData.value,
-  () => {
-    persistCachedLogs()
-  },
-  { deep: true }
-)
-
-const retry = () => {
-  if (store.selectedBot?.project_id !== currentBot.value) {
-    logData.value = []
-  }
-  logData.value.push({
-    message: 'Retrying websocket connection...'
-  })
-  open()
-}
+onUnmounted(() => {
+  teardownRuntimeSocket()
+  teardownTermSocket()
+  disposeTerminal()
+})
 </script>
 
 <template>
-  <section class="w-full self-start rounded-[28px] border border-base-content/10 bg-base-200 p-5 shadow-sm lg:p-6">
-    <dialog ref="quickCommandModal" class="modal">
-      <div class="modal-box rounded-[24px] border border-base-content/10 bg-base-100 shadow-2xl flex flex-col gap-4">
-        <div class="flex flex-col gap-2">
-          <h3 class="font-semibold text-lg">新增快捷命令</h3>
-          <p class="text-sm opacity-70">
-            快捷命令会保存到当前浏览器本地，下次打开终端页仍然可用。
-          </p>
-        </div>
-
-        <label class="form-control">
-          <div class="label py-1">
-            <span class="label-text">命令名称</span>
-          </div>
-          <input
-            v-model="newQuickCommandLabel"
-            class="input input-bordered"
-            placeholder="例如：安装依赖"
-          />
-        </label>
-
-        <label class="form-control">
-          <div class="label py-1">
-            <span class="label-text">命令内容</span>
-          </div>
-          <textarea
-            v-model="newQuickCommandCommand"
-            class="textarea textarea-bordered min-h-28 font-mono text-sm"
-            placeholder="请输入要发送到终端的命令"
-          ></textarea>
-        </label>
-
-        <div class="flex justify-end gap-2">
-          <button class="btn btn-sm btn-ghost" type="button" @click="closeQuickCommandModal()">
-            取消
-          </button>
-          <button class="btn btn-sm btn-primary text-base-100" type="button" @click="addQuickCommand()">
-            保存
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop" @submit.prevent="closeQuickCommandModal()">
-        <button>close</button>
-      </form>
-    </dialog>
-
-    <div class="flex flex-col gap-5">
-      <div class="rounded-[26px] border border-base-content/10 bg-base-100/70 p-4 shadow-sm backdrop-blur">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div class="flex min-w-0 flex-1 flex-col gap-3">
-            <div class="flex flex-wrap items-center gap-3">
-              <span class="text-lg font-semibold">Terminal Workspace</span>
-              <div class="badge badge-sm badge-ghost font-normal">
-                {{ terminalModeLabel }}
-              </div>
-              <div class="badge badge-sm font-normal" :class="terminalStatusTone">
-                {{ terminalStatusText }}
-              </div>
-              <div
-                v-if="downloadProgressState"
-                :class="[
-                  'badge badge-sm font-normal',
-                  downloadProgressState.stalled ? 'badge-warning' : 'badge-info text-base-100'
-                ]"
-              >
-                {{ downloadProgressState.label }} · {{ downloadProgressState.percentText }}
-                <template v-if="downloadProgressState.speedText">
-                  · {{ downloadProgressState.speedText }}
-                </template>
-                · {{ downloadProgressState.ageText }}
-              </div>
-            </div>
-
-            <div class="rounded-2xl border border-base-content/8 bg-base-200/70 px-4 py-3">
-              <div class="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-base-content/45">
-                <span>Session</span>
-                <span class="rounded-full bg-base-content/10 px-2 py-1 font-medium tracking-[0.16em] text-base-content/70">
-                  {{ terminalSessionLabel }}
-                </span>
-              </div>
-              <div class="mt-3 flex flex-col gap-2">
-                <div class="text-sm font-medium text-base-content/85">
-                  {{ selectedProjectName }}
-                </div>
-                <div class="font-mono text-xs text-base-content/55">
-                  {{ selectedProjectDirShort }}
-                </div>
-                <p class="text-sm leading-6 text-base-content/68">
-                  {{ terminalSummary }}
-                </p>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div
-                v-for="metric in terminalMetrics"
-                :key="metric.label"
-                class="rounded-2xl border border-base-content/8 bg-base-100 px-4 py-3"
-              >
-                <div class="text-[11px] uppercase tracking-[0.18em] text-base-content/45">
-                  {{ metric.label }}
-                </div>
-                <div class="mt-2 text-sm font-medium text-base-content/82">
-                  {{ metric.value }}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-end gap-2">
-            <button
-              :class="{ 'btn btn-sm btn-ghost': true, hidden: status === 'OPEN' }"
-              @click="retry()"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="downloadProgressState"
-        :class="[
-          'rounded-2xl border px-4 py-3 transition-colors',
-          downloadProgressState.stalled
-            ? 'border-warning/50 bg-warning/10'
-            : 'border-info/40 bg-info/10'
-        ]"
+  <section
+    class="terminal-workspace w-full overflow-hidden rounded-[30px] border border-base-content/10 bg-base-200/90 shadow-sm"
+  >
+    <div class="flex flex-col lg:flex-row" :class="workspaceHeightClass">
+      <aside
+        class="relative overflow-hidden border-b border-base-content/10 bg-base-100/70 backdrop-blur lg:w-[22rem] lg:border-b-0 lg:border-r"
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex min-w-0 flex-col gap-1">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-semibold">
-                {{ downloadProgressState.stalled ? '下载可能卡住' : '正在下载' }}
-              </span>
-              <span
-                :class="[
-                  'badge badge-sm font-normal',
-                  downloadProgressState.stalled ? 'badge-warning' : 'badge-info text-base-100'
-                ]"
-              >
-                {{ downloadProgressState.percentText }}
-              </span>
+        <div
+          class="pointer-events-none absolute inset-0 bg-gradient-to-br"
+          :class="activeTheme.accent"
+        />
+        <div class="relative flex h-full flex-col gap-5 overflow-y-auto p-5 lg:p-6">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[11px] uppercase tracking-[0.26em] text-base-content/45">
+                Terminal Workspace
+              </div>
+              <div class="mt-2 flex items-center gap-3">
+                <div
+                  class="flex h-11 w-11 items-center justify-center rounded-2xl border border-base-content/10 bg-base-100 text-sm font-semibold shadow-sm"
+                >
+                  {{ projectInitial }}
+                </div>
+                <div class="min-w-0">
+                  <div class="truncate text-base font-semibold text-base-content/85">
+                    {{ selectedProjectName }}
+                  </div>
+                  <div class="text-xs text-base-content/55">
+                    {{ terminalModeLabel }}
+                  </div>
+                </div>
+              </div>
             </div>
-            <p class="truncate text-sm text-base-content/75">
-              {{ downloadProgressState.label }}
+            <div class="badge badge-sm font-normal" :class="terminalStatusTone">
+              {{ statusText }}
+            </div>
+          </div>
+
+          <div class="rounded-[24px] border border-base-content/10 bg-base-100/80 p-4 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-[11px] uppercase tracking-[0.22em] text-base-content/45">
+                Session
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="badge badge-sm badge-ghost font-normal">
+                  {{ terminalSessionLabel }}
+                </div>
+                <button
+                  v-if="props.mode === 'shell'"
+                  class="btn btn-xs btn-ghost rounded-xl"
+                  type="button"
+                  :disabled="!canManageSessions"
+                  @click="createShellSession"
+                >
+                  New
+                </button>
+              </div>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-base-content/70">
+              {{ workspaceSummary }}
+            </p>
+            <div class="mt-4 rounded-2xl bg-base-200/80 px-3 py-3">
+              <div class="text-[11px] uppercase tracking-[0.2em] text-base-content/40">
+                Path
+              </div>
+              <div
+                class="mt-2 break-all font-mono text-xs leading-6 text-base-content/70"
+                :title="selectedProjectDir"
+              >
+                {{ selectedProjectDirShort }}
+              </div>
+            </div>
+            <div
+              v-if="props.mode === 'shell'"
+              class="mt-4 rounded-2xl border border-base-content/10 bg-base-100/70 p-2"
+            >
+              <div class="mb-2 flex items-center justify-between px-2">
+                <div class="text-[11px] uppercase tracking-[0.2em] text-base-content/40">
+                  Tabs
+                </div>
+                <div class="text-[11px] text-base-content/45">
+                  {{ shellSessions.length }}
+                </div>
+              </div>
+              <div v-if="shellSessions.length" class="flex flex-col gap-2">
+                <div
+                  v-for="item in shellSessions"
+                  :key="item.session_id"
+                  class="group flex items-center justify-between rounded-2xl border px-3 py-3 transition"
+                  :class="
+                    item.session_id === activeSessionId
+                      ? 'border-base-content/15 bg-base-200/80'
+                      : 'border-transparent bg-base-100/70 hover:border-base-content/10 hover:bg-base-100'
+                  "
+                >
+                  <button
+                    class="min-w-0 flex-1 text-left"
+                    type="button"
+                    @click="switchShellSession(item.session_id)"
+                  >
+                    <div class="truncate text-sm font-medium text-base-content/80">
+                      {{ item.title }}
+                    </div>
+                    <div class="mt-1 flex items-center gap-2 text-[11px] text-base-content/50">
+                      <span>{{ formatSessionTime(item.created_at) }}</span>
+                      <span class="rounded-full bg-base-content/10 px-2 py-0.5">
+                        {{ item.is_running ? 'live' : 'stopped' }}
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-xs rounded-xl opacity-60 transition group-hover:opacity-100"
+                    type="button"
+                    :disabled="sessionBusy"
+                    @click.stop="closeShellSession(item.session_id)"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div v-else class="px-2 py-4 text-xs leading-5 text-base-content/50">
+                还没有维护终端会话，点击右上角 New 创建第一个标签。
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <div
+              v-for="item in sidebarStats"
+              :key="item.label"
+              class="rounded-[22px] border border-base-content/8 bg-base-100/80 px-4 py-3"
+            >
+              <div class="text-[11px] uppercase tracking-[0.18em] text-base-content/45">
+                {{ item.label }}
+              </div>
+              <div class="mt-2 text-sm font-medium text-base-content/82">
+                {{ item.value }}
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="props.mode === 'shell'"
+            class="rounded-[24px] border border-base-content/10 bg-base-100/75 p-4"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-[11px] uppercase tracking-[0.22em] text-base-content/45">
+                Quick Commands
+              </div>
+              <button
+                class="btn btn-ghost btn-xs px-2 normal-case"
+                type="button"
+                :disabled="!socketConnected"
+                @click="primeCommand('clear', true)"
+              >
+                clear
+              </button>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                v-for="item in quickCommands"
+                :key="item.command"
+                class="btn btn-sm btn-ghost rounded-2xl border border-base-content/10 bg-base-100/80 font-mono text-[11px] font-normal normal-case"
+                type="button"
+                @click="primeCommand(item.command)"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+            <p class="mt-3 text-xs leading-5 text-base-content/55">
+              点击后会先填入输入框，确认再执行，避免误触直接改动实例环境。
             </p>
           </div>
 
-          <div class="flex items-center gap-2 text-sm">
-            <span v-if="downloadProgressState.speedText" class="badge badge-ghost badge-sm">
-              {{ downloadProgressState.speedText }}
-            </span>
-            <span class="badge badge-ghost badge-sm">
-              {{ downloadProgressState.ageText }}
-            </span>
+          <div class="mt-auto hidden rounded-[24px] border border-base-content/10 bg-base-100/60 px-4 py-3 text-xs leading-5 text-base-content/55 lg:block">
+            {{ connectionHint }}
           </div>
         </div>
+      </aside>
 
-        <progress
-          class="progress mt-3 w-full"
-          :class="downloadProgressState.stalled ? 'progress-warning' : 'progress-info'"
-          :value="downloadProgressState.percentValue"
-          max="100"
-        />
-      </div>
-
-      <div class="rounded-[24px] border border-base-content/10 bg-base-300/30 p-3">
-        <div
-          ref="logShowTable"
-          class="h-[28rem] max-h-[28rem] overflow-y-auto overflow-x-hidden rounded-[18px]"
+      <div class="flex min-w-0 flex-1 flex-col">
+        <header
+          class="flex flex-col gap-4 border-b border-base-content/10 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:px-6"
         >
-          <table class="table table-xs table-fixed rounded-none">
-          <tbody>
-            <tr
-              v-for="(item, index) in logData"
-              :key="`${item.time ?? 'log'}-${index}`"
-              :class="{
-                'flex w-full items-start font-mono text-[13px] leading-6': true,
-                'bg-error/50': item.level === 'ERROR',
-                'bg-warning/50': item.level === 'WARNING',
-                'bg-info/10 border-l-4 border-info': ['start', 'progress', 'deps'].includes(getDownloadRowKind(item.message)),
-                'bg-warning/10 border-l-4 border-warning': getDownloadRowKind(item.message) === 'retry',
-                'bg-error/10 border-l-4 border-error': getDownloadRowKind(item.message) === 'failure'
-              }"
-            >
-              <th v-if="item.time" class="sticky left-0 shrink-0 whitespace-nowrap bg-base-300/90 pl-0 text-gray-500">
-                {{ item.time }}
-              </th>
-              <td v-if="item.level" class="w-24 shrink-0 whitespace-nowrap">{{ item.level }}</td>
-              <td
-                class="flex min-w-0 flex-1 items-start gap-2 whitespace-pre-wrap break-all"
-                :class="{ 'pl-0 text-success': !item.time }"
-              >
-                <span
-                  v-if="getDownloadRowKind(item.message) === 'start'"
-                  class="badge badge-info badge-sm shrink-0 text-base-100"
-                >
-                  开始下载
-                </span>
-                <span
-                  v-else-if="getDownloadRowKind(item.message) === 'progress'"
-                  class="badge badge-info badge-sm shrink-0 text-base-100"
-                >
-                  下载进度
-                </span>
-                <span
-                  v-else-if="getDownloadRowKind(item.message) === 'deps'"
-                  class="badge badge-ghost badge-sm shrink-0"
-                >
-                  安装依赖
-                </span>
-                <span
-                  v-else-if="getDownloadRowKind(item.message) === 'retry'"
-                  class="badge badge-warning badge-sm shrink-0"
-                >
-                  切换官方源
-                </span>
-                <span
-                  v-else-if="getDownloadRowKind(item.message) === 'failure'"
-                  class="badge badge-error badge-sm shrink-0 text-base-100"
-                >
-                  下载失败
-                </span>
-                <span class="min-w-0 whitespace-pre-wrap break-all">{{ item.message }}</span>
-              </td>
-            </tr>
-          </tbody>
-          </table>
-        </div>
-      </div>
-
-      <form
-        v-if="props.mode === 'shell'"
-        class="flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 backdrop-blur"
-        @submit.prevent="sendCommand"
-      >
-          <div class="flex flex-col gap-3 rounded-2xl border border-base-content/8 bg-base-200/70 p-3">
+          <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Command Deck</span>
-              <button class="btn btn-xs btn-outline btn-primary" type="button" @click="openQuickCommandModal()">
-                + 新增
-              </button>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <template v-for="item in commandDeck" :key="item.id">
-                <button class="btn btn-xs btn-ghost" type="button" @click="fillCommand(item.command)">
-                  {{ item.label }}
-                </button>
-                <button
-                  v-if="!item.id.startsWith('builtin-')"
-                  class="btn btn-xs btn-ghost px-2"
-                  type="button"
-                  title="删除快捷命令"
-                  @click="removeQuickCommand(item.id)"
-                >
-                  ×
-                </button>
-              </template>
-            </div>
-            <div v-if="recentCommands.length" class="flex flex-col gap-2">
-              <span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Recent</span>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="item in recentCommands"
-                  :key="item.id"
-                  class="btn btn-xs btn-outline"
-                  type="button"
-                  @click="fillCommand(item.command)"
-                >
-                  {{ item.command }}
-                </button>
+              <span class="text-lg font-semibold text-base-content/85">
+                {{ props.mode === 'shell' ? 'Maintenance Terminal' : 'Runtime Log Stream' }}
+              </span>
+              <div class="badge badge-sm badge-ghost font-normal">
+                {{ runtimeStateLabel }}
               </div>
             </div>
+            <div class="mt-1 text-sm text-base-content/55">
+              {{ connectionHint }}
+            </div>
+            <div v-if="props.mode === 'shell' && activeSession" class="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/50">
+              <span class="rounded-full bg-base-content/8 px-2 py-1 font-mono">
+                {{ activeSession.title }}
+              </span>
+              <span>created {{ activeSessionCreatedAt }}</span>
+            </div>
           </div>
 
-        <div class="flex flex-col gap-3 lg:flex-row">
-          <div class="flex flex-1 items-stretch rounded-2xl border border-base-content/10 bg-base-300/40">
-            <div class="flex items-center border-r border-base-content/10 px-3 font-mono text-xs text-base-content/45">
-              $
-            </div>
-            <input
-              v-model="commandInput"
-              class="input input-sm h-auto flex-1 border-0 bg-transparent font-mono focus:outline-none"
-              :placeholder="commandPlaceholder"
-              :disabled="!canWriteCommand"
-            />
-          </div>
-          <div class="flex gap-2">
-            <button
-              class="btn btn-sm btn-primary text-base-100"
-              type="submit"
-              :disabled="!canWriteCommand"
+          <div class="flex flex-wrap items-center gap-2">
+            <label
+              v-if="props.mode === 'shell'"
+              class="flex items-center gap-2 rounded-2xl border border-base-content/10 bg-base-100 px-3 py-2 text-xs text-base-content/60"
             >
-              Send
-            </button>
+              <span class="uppercase tracking-[0.18em]">Theme</span>
+              <select
+                v-model="selectedTheme"
+                class="select select-sm min-h-0 border-0 bg-transparent pr-8 font-medium focus:outline-none"
+              >
+                <option
+                  v-for="item in themeOptions"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ item.label }}
+                </option>
+              </select>
+            </label>
+
             <button
-              class="btn btn-sm btn-warning"
+              v-if="props.mode === 'shell'"
+              class="btn btn-sm btn-ghost rounded-2xl"
               type="button"
               :disabled="!canInterrupt"
               @click="sendInterrupt"
@@ -1070,19 +954,115 @@ const retry = () => {
               Ctrl+C
             </button>
           </div>
-        </div>
-      </form>
+        </header>
 
-      <div
-        v-else
-        class="rounded-[24px] border border-base-content/10 bg-base-100/60 p-4 text-sm leading-6 text-base-content/70 backdrop-blur"
-      >
-        维护命令、手动安装依赖和
-        <span class="font-mono">playwright install</span>
-        等操作已移动到左侧菜单中的独立
-        <span class="font-semibold">终端</span>
-        页面，避免与实例运行日志混在一起。
+        <div class="flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-5">
+          <div
+            v-if="props.mode === 'shell'"
+            class="terminal-shell-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-slate-900/80 bg-slate-950 shadow-inner"
+            :class="terminalPaneHeightClass"
+            :data-theme="selectedTheme"
+          >
+            <div class="flex items-center justify-between border-b border-white/5 px-4 py-3 text-xs text-slate-400">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-rose-400/90"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-amber-300/90"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-emerald-400/90"></span>
+              </div>
+              <div class="font-mono">{{ terminalSessionLabel }}</div>
+            </div>
+            <div ref="terminalRoot" class="terminal-shell min-h-0 flex-1"></div>
+          </div>
+
+          <div
+            v-else
+            class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-base-content/10 bg-slate-950 shadow-inner"
+            :class="terminalPaneHeightClass"
+          >
+            <div class="flex items-center justify-between border-b border-white/5 px-4 py-3 text-xs text-slate-400">
+              <span>Runtime Output</span>
+              <span class="font-mono">{{ logData.length }} lines</span>
+            </div>
+            <div
+              ref="runtimeLogWrap"
+              class="min-h-0 flex-1 overflow-y-auto px-4 py-4 font-mono text-[13px] leading-6 text-slate-100"
+            >
+              <div
+                v-for="(item, index) in logData"
+                :key="`${item.time ?? 'log'}-${index}`"
+                class="whitespace-pre-wrap break-all"
+              >
+                <span v-if="item.time" class="text-slate-500">{{ item.time }} </span>
+                <span v-if="item.level" class="text-cyan-300">{{ item.level }} </span>
+                <span>{{ item.message }}</span>
+              </div>
+            </div>
+          </div>
+
+          <form
+            v-if="props.mode === 'shell'"
+            class="mt-4 flex flex-col gap-3 rounded-[24px] border border-base-content/10 bg-base-100/75 p-4 backdrop-blur"
+            @submit.prevent="sendCommand"
+          >
+            <div class="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div
+                class="flex flex-1 items-center rounded-[20px] border border-base-content/10 bg-base-300/40 px-3"
+              >
+                <div class="mr-3 font-mono text-xs text-base-content/45">$</div>
+                <input
+                  ref="commandInputRef"
+                  v-model="commandInput"
+                  class="h-12 flex-1 bg-transparent font-mono text-sm text-base-content/80 outline-none"
+                  :placeholder="commandPlaceholder"
+                  :disabled="!canWriteCommand"
+                />
+              </div>
+              <div class="flex gap-2">
+                <button
+                  class="btn btn-sm btn-primary rounded-2xl px-5 text-base-100"
+                  type="submit"
+                  :disabled="!canWriteCommand"
+                >
+                  Run
+                </button>
+                <button
+                  class="btn btn-sm btn-ghost rounded-2xl"
+                  type="button"
+                  :disabled="!socketConnected"
+                  @click="primeCommand('pwd')"
+                >
+                  pwd
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.terminal-shell :deep(.xterm) {
+  height: 100%;
+  padding: 12px 14px;
+}
+
+.terminal-shell :deep(.xterm-viewport) {
+  overflow-y: auto !important;
+  scrollbar-width: none;
+}
+
+.terminal-shell :deep(.xterm-viewport::-webkit-scrollbar) {
+  display: none;
+}
+
+.terminal-shell-panel[data-theme='paper'] {
+  border-color: rgba(161, 98, 7, 0.45);
+  background: #f7f4ec;
+}
+
+.terminal-shell-panel[data-theme='paper'] :deep(.xterm) {
+  color: #3f3f46;
+}
+</style>

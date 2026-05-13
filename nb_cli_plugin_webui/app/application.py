@@ -4,7 +4,7 @@ from pathlib import Path
 from starlette.types import Send, Scope, Receive
 from fastapi import FastAPI, HTTPException, status
 from fastapi.security.utils import get_authorization_scheme_param
-from starlette.responses import Response, JSONResponse
+from starlette.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles as BaseStaticFiles
 from starlette.exceptions import HTTPException as StarlettleHTTPException
 from starlette.middleware.cors import CORSMiddleware
@@ -74,10 +74,6 @@ class StaticFiles(BaseStaticFiles):
                 raise err
 
 
-frontend = FastAPI(openapi_url="")
-frontend.mount("/", StaticFiles(directory=STATIC_PATH, html=True), "NoneBot WebUI")
-
-
 api = FastAPI(
     debug=bool(Config.debug),
     title="NoneBot CLI WebUI",
@@ -89,12 +85,39 @@ api = FastAPI(
     redoc_url="/docs",
 )
 api.include_router(api_router, prefix="/v1")
-
-
 app = FastAPI(openapi_url="")
-app.include_router(api_router, prefix="/v1")
 app.mount("/api", app=api)
-app.mount("/", app=frontend)
+app.include_router(api_router, prefix="/v1")
+app.mount("/assets", StaticFiles(directory=STATIC_PATH / "assets", html=False), "NoneBot WebUI Assets")
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend_root():
+    return FileResponse(STATIC_PATH / "index.html")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend_app(full_path: str):
+    normalized = str(full_path or "").lstrip("/")
+    if normalized.startswith(("v1/", "api/")):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": [{"msg": "Not Found"}]},
+        )
+
+    candidate = (STATIC_PATH / normalized).resolve()
+    try:
+        candidate.relative_to(STATIC_PATH.resolve())
+    except ValueError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": [{"msg": "Not Found"}]},
+        )
+
+    if candidate.is_file():
+        return FileResponse(candidate)
+
+    return FileResponse(STATIC_PATH / "index.html")
 
 
 @app.middleware("http")
