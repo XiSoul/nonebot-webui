@@ -92,3 +92,17 @@ class BackupRestoreRemoteRequest(BaseModel):
 class BackupRestoreResponse(BaseModel):
     restarted: bool = False
     message: str = ""
+
+
+class BackupRestoreAsNewRemoteRequest(BaseModel):
+    source: BackupSource
+    key: str
+    password: str = ""
+
+
+class BackupRestoreAsNewResponse(BaseModel):
+    project_id: str
+    project_name: str
+    project_dir: str
+    project_id_reassigned: bool = False
+    message: str = ""

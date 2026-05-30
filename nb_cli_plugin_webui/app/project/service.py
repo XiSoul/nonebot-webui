@@ -300,9 +300,9 @@ def _venv_python_path(venv_path: Path) -> Path:
     if resolved_python_path:
         candidate = Path(resolved_python_path).expanduser()
         try:
-            candidate = candidate.resolve()
-        except Exception:
             candidate = candidate.absolute()
+        except Exception:
+            pass
         if candidate.is_file():
             return candidate
 
@@ -492,16 +492,6 @@ def _project_dir_alias_keys(project_dir: Path) -> Set[str]:
 
     normalized_values.add(str(resolved).replace("\\", "/").casefold())
 
-    project_name = resolved.name.strip()
-    if not project_name:
-        return normalized_values
-
-    for root in ("/external-projects", "/opt/nonebot-projects"):
-        alias_path = Path(root) / project_name
-        normalized_values.add(
-            str(alias_path.expanduser()).replace("\\", "/").casefold()
-        )
-
     return normalized_values
 
 
@@ -624,13 +614,19 @@ def get_project_port_usage(
     return result
 
 
+def find_project_port_conflict(
+    port: int, *, exclude_project_id: Optional[str] = None
+) -> Optional[Tuple[str, str]]:
+    if port <= 0:
+        return None
+    used_ports = get_project_port_usage(exclude_project_id=exclude_project_id)
+    return used_ports.get(port)
+
+
 def ensure_project_port_is_unique(
     port: int, *, exclude_project_id: Optional[str] = None
 ) -> None:
-    if port <= 0:
-        return
-    used_ports = get_project_port_usage(exclude_project_id=exclude_project_id)
-    conflict = used_ports.get(port)
+    conflict = find_project_port_conflict(port, exclude_project_id=exclude_project_id)
     if conflict:
         _, project_name = conflict
         raise ProjectPortAlreadyExists(port, project_name)
@@ -821,7 +817,7 @@ async def add_nonebot_project(data: AddProjectData) -> str:
 
     current_env = resolve_project_use_env(project_dir)
     configured_port = get_project_env_port(project_dir, current_env)
-    ensure_project_port_is_unique(configured_port)
+    port_conflict = find_project_port_conflict(configured_port)
     stored_drivers = _resolve_imported_project_drivers(project_dir, current_env)
 
     resolved_adapter_names = [
@@ -925,6 +921,18 @@ async def add_nonebot_project(data: AddProjectData) -> str:
             log.add_log,
             CustomLog(
                 message=f"Plugin packages: {', '.join(installable_plugin_packages)}"
+            ),
+        )
+    if port_conflict:
+        _, conflict_name = port_conflict
+        process.add(
+            log.add_log,
+            CustomLog(
+                level="WARNING",
+                message=(
+                    f"端口 {configured_port} 已被实例 {conflict_name} 使用，"
+                    "实例已添加成功，但同时启动会冲突，请稍后在实例设置中修改端口。"
+                ),
             ),
         )
     for warning in plugin_resolution_warnings:
@@ -1211,8 +1219,15 @@ def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
             continue
 
         if not Path(_project.project_dir).exists():
-            npm = NoneBotProjectManager(project_id=project_id)
-            npm.remove_project()
+            log.warning(
+                f"Project directory missing for {_project.project_name} "
+                f"(id={project_id}): {_project.project_dir}"
+            )
+            _project.is_running = False
+            _project.runtime_state = "missing"
+            _project.startup_duration_seconds = 0.0
+            object.__setattr__(_project, "configured_port", 0)
+            result[project_id] = _project
             continue
 
         is_running = False
@@ -1230,8 +1245,40 @@ def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
             if runtime_state == "running"
             else 0.0
         )
+        try:
+            env_name = (
+                getattr(_project, "use_env", "")
+                or resolve_project_use_env(Path(_project.project_dir))
+            )
+            object.__setattr__(
+                _project,
+                "configured_port",
+                get_project_env_port(Path(_project.project_dir), env_name),
+            )
+        except Exception:
+            object.__setattr__(_project, "configured_port", 0)
         if runtime_state == "stopped" and is_project_starting(project_id):
             _project.runtime_state = "starting"
         result[project_id] = _project
 
     return result
+
+
+async def update_nonebot_project_dir(project_id: str, new_dir: str) -> str:
+    """更新实例的 project_dir 路径。"""
+    # 解析新路径，验证其包含有效的 NoneBot 项目
+    resolved_dir = resolve_nonebot_project_dir(new_dir)
+
+    # 检查路径唯一性，排除当前项目自身
+    ensure_project_dir_is_unique(resolved_dir, exclude_project_id=project_id)
+
+    # 读取项目元数据并更新路径
+    manager = NoneBotProjectManager(project_id=project_id)
+    data = manager.read()
+    data.project_dir = str(resolved_dir.absolute())
+    manager.store(data)
+
+    # 重新读取以刷新 ConfigManager 等内部状态
+    manager.read()
+
+    return data.project_dir

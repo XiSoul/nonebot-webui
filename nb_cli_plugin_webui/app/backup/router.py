@@ -16,6 +16,8 @@ from .schemas import (
     BackupConnectivityRequest,
     BackupConnectivityResponse,
     BackupRemoteListResponse,
+    BackupRestoreAsNewRemoteRequest,
+    BackupRestoreAsNewResponse,
     BackupRestoreRemoteRequest,
     BackupRestoreResponse,
     BackupSettingsResponse,
@@ -30,6 +32,7 @@ from .service import (
     get_backup_settings_response,
     list_remote_backups,
     remove_temp_file,
+    restore_project_as_new_from_archive,
     restore_project_from_archive,
     test_backup_connectivity,
     update_backup_settings,
@@ -196,6 +199,98 @@ async def restore_local_backup(
                 "Local backup restored successfully. Instance was restarted automatically."
                 if restarted
                 else "Local backup restored successfully."
+            ),
+        )
+    )
+
+
+@router.post(
+    "/restore-as-new/remote",
+    response_model=GenericResponse[BackupRestoreAsNewResponse],
+)
+async def restore_remote_backup_as_new(
+    data: BackupRestoreAsNewRemoteRequest,
+) -> GenericResponse[BackupRestoreAsNewResponse]:
+    fd, archive_name = tempfile.mkstemp(
+        prefix="nonebot-webui-restore-as-new-", suffix=".zip"
+    )
+    os.close(fd)
+    archive_path = Path(archive_name)
+
+    try:
+        await asyncio.to_thread(
+            download_remote_backup, data.source, data.key, archive_path
+        )
+        (
+            project_id,
+            project_name,
+            project_dir,
+            project_id_reassigned,
+        ) = await restore_project_as_new_from_archive(
+            archive_path, password=data.password
+        )
+    finally:
+        remove_temp_file(archive_path)
+
+    return GenericResponse(
+        detail=BackupRestoreAsNewResponse(
+            project_id=project_id,
+            project_name=project_name,
+            project_dir=project_dir,
+            project_id_reassigned=project_id_reassigned,
+            message=(
+                "Backup restored as new instance."
+                if not project_id_reassigned
+                else "Backup restored as new instance with reassigned project id."
+            ),
+        )
+    )
+
+
+@router.post(
+    "/restore-as-new/local",
+    response_model=GenericResponse[BackupRestoreAsNewResponse],
+)
+async def restore_local_backup_as_new(
+    request: Request,
+    x_backup_filename: str = Header(default="", alias="X-Backup-Filename"),
+    x_backup_password: str = Header(default="", alias="X-Backup-Password"),
+) -> GenericResponse[BackupRestoreAsNewResponse]:
+    _ = x_backup_filename.strip() or "backup.zip"
+
+    fd, archive_name = tempfile.mkstemp(
+        prefix="nonebot-webui-restore-as-new-upload-", suffix=".zip"
+    )
+    os.close(fd)
+    archive_path = Path(archive_name)
+
+    try:
+        with archive_path.open("wb") as target:
+            async for chunk in request.stream():
+                if chunk:
+                    target.write(chunk)
+
+        (
+            project_id,
+            project_name,
+            project_dir,
+            project_id_reassigned,
+        ) = await restore_project_as_new_from_archive(
+            archive_path, password=x_backup_password
+        )
+    finally:
+        remove_temp_file(archive_path)
+
+    return GenericResponse(
+        detail=BackupRestoreAsNewResponse(
+            project_id=project_id,
+            project_name=project_name,
+            project_dir=project_dir,
+            project_id_reassigned=project_id_reassigned,
+            message=(
+                "Backup restored as new instance."
+                if not project_id_reassigned
+                else "Backup restored as new instance with reassigned project id."
             ),
         )
     )

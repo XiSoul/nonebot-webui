@@ -9,8 +9,8 @@ import Footer from '@/components/FooterItem.vue'
       <span class="material-symbols-outlined text-primary" style="font-size: 14rem"> circle </span>
 
       <h1 class="text-5xl font-normal"><span class="text-primary">None</span>Bot</h1>
-      <p class="whitespace-nowrap text-base-content opacity-70 font-medium text-sm tracking-wide">
-        跨平台 PYTHON 异步机器人框架
+      <p class="text-base-content opacity-60 text-xs tracking-wide">
+        忘记密码？执行 <code class="bg-base-200 px-1.5 py-0.5 rounded text-[11px]">docker exec -it nonebot-webui python -m nb_cli_plugin_webui.scripts reset_token</code> 重置
       </p>
 
       <LoginForm />

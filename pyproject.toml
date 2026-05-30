@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nb-cli-plugin-webui-xisoul"
-version = "0.4.8"
+version = "0.4.9"
 description = "web ui support for nb-cli"
 authors = ["Kyomotoi <kyomotoiowo@gmail.com>"]
 license = "MIT"
@@ -55,6 +55,7 @@ init = "nb_cli_plugin_webui.scripts:init"
 update = "nb_cli_plugin_webui.scripts:update"
 compile = "nb_cli_plugin_webui.scripts:compile"
 generate = "nb_cli_plugin_webui.scripts:generate_openapi"
+reset-token = "nb_cli_plugin_webui.scripts:reset_token"
 
 [tool.black]
 line-length = 88

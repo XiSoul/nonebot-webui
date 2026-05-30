@@ -284,13 +284,6 @@ onUnmounted(() => {
           使用链接凭证登录
         </button>
       </div>
-
-      <div v-if="autoLoginDebug" class="mt-3 max-w-[42rem] break-all text-left text-[11px] leading-5 text-base-content/55">
-        {{ autoLoginDebug }}
-      </div>
-      <div v-if="autoLoginState" class="mt-1 max-w-[42rem] break-all text-left text-[11px] leading-5 text-primary">
-        auto-login-state: {{ autoLoginState }}
-      </div>
     </form>
   </div>
 </template>

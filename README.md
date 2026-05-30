@@ -223,10 +223,48 @@ docker logs nonebot-webui
 
 因此，登录凭证本身不是直接拿来当 `Authorization: Bearer ...` 用的。
 
-如果后面你在“安全设置”里改成随机 token 模式，新 token 也会继续写到容器日志里。
+如果后面你在”安全设置”里改成随机 token 模式，新 token 也会继续写到容器日志里。
 
 永久 token 模式下，只要 `/app/config.json` 中的认证字段仍然完整，后续重启不会自动换 token。
 如果配置文件损坏或字段缺失，程序现在会直接报错提示你修复配置，而不是静默重新生成一个新 token。
+
+### 重置登录密码
+
+如果忘记了登录密码，可以在 Docker 容器内执行以下命令重置：
+
+```shell
+docker exec -it nonebot-webui python -m nb_cli_plugin_webui.scripts reset_token
+```
+
+执行后会直接在终端输出新密码，请注意保存：
+
+```
+============================================================
+WebUI login token has been reset successfully.
+============================================================
+
+Your new token is:
+
+    abc123
+
+ATTENTION: Token is only shown once. Please save it securely.
+============================================================
+
+IMPORTANT: You must restart the container for changes to take effect:
+    docker restart nonebot-webui
+============================================================
+```
+
+**重置后必须重启容器才能生效：**
+
+```shell
+docker restart nonebot-webui
+```
+
+> ⚠️ 注意：
+> - 新密码只显示一次，请务必保存好
+> - 重置后必须重启容器，否则新密码不生效
+> - 重启后所有已登录的设备需要重新输入新密码登录
 
 ### 常用环境变量
 

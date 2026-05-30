@@ -189,6 +189,7 @@ export type NoneBotProjectMeta = {
   is_running?: boolean
   runtime_state?: string
   startup_duration_seconds?: number
+  configured_port?: number
   use_env?: string
   use_run_script?: boolean
   run_script_name?: string
@@ -652,6 +653,21 @@ export type DeleteProjectV1ProjectDeleteDeleteError = HTTPValidationError
 export type ListProjectV1ProjectListGetResponse = ListProjectResponse
 
 export type ListProjectV1ProjectListGetError = unknown
+
+export type UpdateProjectDirData = {
+  project_dir: string
+}
+
+export type UpdateProjectDirV1ProjectUpdateDirPostData = {
+  body: UpdateProjectDirData
+  query?: {
+    project_id?: string
+  }
+}
+
+export type UpdateProjectDirV1ProjectUpdateDirPostResponse = GenericResponse_str_
+
+export type UpdateProjectDirV1ProjectUpdateDirPostError = HTTPValidationError
 
 export type CheckProjectTomlV1ProjectCheckTomlPostData = {
   query: {

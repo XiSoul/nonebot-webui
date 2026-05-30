@@ -142,6 +142,28 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     return updateBotEnv(selectedBot.value.project_id, env)
   }
 
+  const updateBotDir = async (projectId: string, newDir: string) => {
+    if (!projectId || !newDir.trim()) return false
+
+    const { data, error } = await ProjectService.updateProjectDirV1ProjectUpdateDirPost({
+      body: { project_dir: newDir.trim() },
+      query: { project_id: projectId }
+    })
+
+    if (error) {
+      toast.add('error', `更新路径失败, 原因: ${getErrorMessage(error)}`, '', 5000)
+      return false
+    }
+
+    if (data) {
+      await loadBots()
+      toast.add('success', `路径已更新为: ${data.detail}`, '', 3000)
+      return true
+    }
+
+    return false
+  }
+
   watch(
     () => selectedBot.value,
     (bot) => {
@@ -167,6 +189,7 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     startHeartbeat,
     stopHeartbeat,
     updateBotEnv,
-    updateEnv
+    updateEnv,
+    updateBotDir
   }
 })

@@ -20,6 +20,7 @@ from .service import (
     list_nonebot_project,
     create_nonebot_project,
     is_managed_project_dir,
+    update_nonebot_project_dir,
 )
 from ..process.service import (
     stop_project_shell_session,
@@ -33,6 +34,7 @@ from .schemas import (
     CreateProjectData,
     ProjectTomlDetail,
     ListProjectResponse,
+    UpdateProjectDirData,
 )
 
 router = APIRouter(tags=["project"])
@@ -185,3 +187,15 @@ async def get_drivers(
     """
     project_metadata = project.read()
     return GenericResponse(detail=project_metadata.drivers)
+
+
+@router.post("/update-dir", response_model=GenericResponse[str])
+async def update_project_dir(
+    data: UpdateProjectDirData,
+    project: NoneBotProjectManager = Depends(get_nonebot_project_manager),
+) -> GenericResponse[str]:
+    """
+    - 更新 NoneBot 实例的路径
+    """
+    result = await update_nonebot_project_dir(project.project_id, data.project_dir)
+    return GenericResponse(detail=result)

@@ -1,6 +1,6 @@
 import type { NoneBotProjectMeta } from '@/client/api'
 
-export type RuntimeState = 'stopped' | 'starting' | 'running'
+export type RuntimeState = 'stopped' | 'starting' | 'running' | 'missing'
 
 type RuntimeStateLike = Pick<NoneBotProjectMeta, 'is_running'> & {
   runtime_state?: string
@@ -8,7 +8,12 @@ type RuntimeStateLike = Pick<NoneBotProjectMeta, 'is_running'> & {
 
 export const getRuntimeState = (bot?: RuntimeStateLike | null): RuntimeState => {
   const state = String(bot?.runtime_state ?? '').trim().toLowerCase()
-  if (state === 'starting' || state === 'running' || state === 'stopped') {
+  if (
+    state === 'starting' ||
+    state === 'running' ||
+    state === 'stopped' ||
+    state === 'missing'
+  ) {
     return state
   }
   return bot?.is_running ? 'running' : 'stopped'

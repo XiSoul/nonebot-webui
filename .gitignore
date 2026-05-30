@@ -550,3 +550,7 @@ dist-ssr
 *.sw?
 
 openapi.json
+
+# 临时文件
+*.png
+.codex-test-build/

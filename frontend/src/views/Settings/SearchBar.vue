@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ConfigTypeSchema, ModuleTypeSchema } from '@/client/api'
 import { useCustomStore, useNoneBotStore } from '@/stores'
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSettingsStore, type ModuleConfigType } from './client'
 import DotenvManageModal from './DotenvManageModal.vue'
 import { useRoute } from 'vue-router'
@@ -23,11 +23,23 @@ onMounted(() => {
     : route.query.search ?? ''
 })
 
-document.addEventListener('keydown', (e) => {
+const handleSlashKey = (e: KeyboardEvent) => {
+  const target = e.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    return
+  }
   if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault()
     searchInputElement.value?.focus()
   }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleSlashKey)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleSlashKey)
 })
 
 const checkIsSearch = (e: KeyboardEvent) => {

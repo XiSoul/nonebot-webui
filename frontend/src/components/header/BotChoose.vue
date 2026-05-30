@@ -66,19 +66,23 @@ const drawerRef = ref<InstanceType<typeof DrawerItem> | null>(null)
             <div
               class="badge"
               :class="
-                getRuntimeState(bot) === 'running'
-                  ? 'badge-success text-base-100'
-                  : getRuntimeState(bot) === 'starting'
-                    ? 'badge-warning'
-                    : 'badge-ghost'
+                getRuntimeState(bot) === 'missing'
+                  ? 'badge-error text-base-100'
+                  : getRuntimeState(bot) === 'running'
+                    ? 'badge-success text-base-100'
+                    : getRuntimeState(bot) === 'starting'
+                      ? 'badge-warning'
+                      : 'badge-ghost'
               "
             >
               {{
-                getRuntimeState(bot) === 'running'
-                  ? '运行中'
-                  : getRuntimeState(bot) === 'starting'
-                    ? '启动中'
-                    : '未运行'
+                getRuntimeState(bot) === 'missing'
+                  ? '目录缺失'
+                  : getRuntimeState(bot) === 'running'
+                    ? '运行中'
+                    : getRuntimeState(bot) === 'starting'
+                      ? '启动中'
+                      : '未运行'
               }}
             </div>
           </div>

@@ -1,43 +1,12 @@
 services:
   nonebot-webui:
-    image: docker.io/xisoul/nonebot-webui:latest
+    build: .
+    image: xisoul/nonebot-webui:latest
     container_name: nonebot-webui
     restart: always
     network_mode: host
     environment:
       - HOST=0.0.0.0
       - PORT=18080
-      # Optional network / package environment overrides:
-      # - WEBUI_HTTP_PROXY=http://127.0.0.1:7890
-      # - WEBUI_HTTPS_PROXY=http://127.0.0.1:7890
-      # - WEBUI_ALL_PROXY=socks5://127.0.0.1:7890
-      # - WEBUI_NO_PROXY=127.0.0.1,localhost
-      # - WEBUI_DEBIAN_MIRROR=https://mirrors.ustc.edu.cn
-      # - WEBUI_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-      # - WEBUI_PIP_EXTRA_INDEX_URL=
-      # - WEBUI_PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
     volumes:
-      - ./data/projects:/projects
-      - ./data/external-projects:/external-projects
-      - ./data/config.json:/app/config.json
-      - ./data/project.json:/app/project.json
-    healthcheck:
-      test: ["CMD", "sh", "-c", "httpx --verbose --follow-redirects http://127.0.0.1:18080 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    labels:
-      - com.centurylinklabs.watchtower.enable=true
-
-  watchtower:
-    image: docker.io/containrrr/watchtower:latest
-    container_name: nonebot-webui-watchtower
-    restart: always
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command:
-      - --cleanup
-      - --interval
-      - "300"
-      - nonebot-webui
+      - ./data:/data

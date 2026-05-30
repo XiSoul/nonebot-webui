@@ -503,9 +503,9 @@ def _detect_project_virtualenv(project_dir: Path) -> Tuple[Optional[Path], Optio
     if resolved_python_path:
         python_path = Path(resolved_python_path).expanduser()
         try:
-            python_path = python_path.resolve()
-        except Exception:
             python_path = python_path.absolute()
+        except Exception:
+            pass
 
         if python_path.is_file():
             bin_dir = python_path.parent

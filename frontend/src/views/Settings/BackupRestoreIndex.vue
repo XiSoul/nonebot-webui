@@ -9,6 +9,8 @@ import {
   downloadProjectBackup,
   getBackupSettings,
   listRemoteBackups,
+  restoreAsNewLocalBackup,
+  restoreAsNewRemoteBackup,
   restoreLocalBackup,
   restoreRemoteBackup,
   testBackupConnection,
@@ -27,12 +29,16 @@ const refreshingSource = ref<BackupSource | ''>('')
 const testingSource = ref<BackupSource | ''>('')
 const restoringKey = ref('')
 const restoringLocal = ref(false)
+const restoringAsNewKey = ref('')
+const restoringAsNewLocal = ref(false)
 const localBackupFile = ref<File | null>(null)
 const lastTestResult = ref<BackupConnectivityResult | null>(null)
 const showArchivePassword = ref(false)
 const restorePasswordModalVisible = ref(false)
 const restorePasswordValue = ref('')
-const restorePasswordMode = ref<'local' | 'remote'>('local')
+const restorePasswordMode = ref<
+  'local' | 'remote' | 'local-as-new' | 'remote-as-new'
+>('local')
 const restorePasswordSource = ref<BackupSource>('webdav')
 const restorePasswordKey = ref('')
 const restorePasswordBusy = ref(false)
@@ -89,7 +95,7 @@ const needsRestorePassword = (error?: string) =>
   String(error || '').toLowerCase().includes('requires password')
 
 const openRestorePasswordModal = (
-  mode: 'local' | 'remote',
+  mode: 'local' | 'remote' | 'local-as-new' | 'remote-as-new',
   source: BackupSource = 'webdav',
   key = ''
 ) => {
@@ -326,6 +332,99 @@ const handleLocalRestore = async (password = '') => {
   return true
 }
 
+const selectRestoredBotById = (projectId: string) => {
+  const bots = nonebotStore.getExtendedBotsList()
+  const target = bots.find((bot: { project_id?: string }) => bot.project_id === projectId)
+  if (target) {
+    nonebotStore.selectBot(target)
+  }
+}
+
+const handleRemoteRestoreAsNew = async (
+  source: BackupSource,
+  key: string,
+  password = ''
+) => {
+  if (!password) {
+    if (
+      !window.confirm(
+        '这会从备份创建一个新实例。如果备份里的实例 ID 已存在会自动生成新 ID。继续？'
+      )
+    ) {
+      return false
+    }
+  }
+
+  restoringAsNewKey.value = `${source}:${key}`
+  const { data, error } = await restoreAsNewRemoteBackup(source, key, password)
+  restoringAsNewKey.value = ''
+
+  if (error || !data) {
+    if (needsRestorePassword(error) && !password) {
+      openRestorePasswordModal('remote-as-new', source, key)
+      return false
+    }
+    toast.add('error', `恢复为新实例失败：${error}`, '', 5000)
+    return false
+  }
+
+  await nonebotStore.loadBots()
+  selectRestoredBotById(data.project_id)
+  toast.add(
+    'success',
+    `已从备份创建新实例：${data.project_name}${
+      data.project_id_reassigned ? '（ID 已重新生成）' : ''
+    }`,
+    '',
+    5000
+  )
+  return true
+}
+
+const handleLocalRestoreAsNew = async (password = '') => {
+  if (!localBackupFile.value) {
+    toast.add('warning', '请先选择一个本地备份压缩包', '', 5000)
+    return false
+  }
+  if (!password) {
+    if (
+      !window.confirm(
+        '这会从备份创建一个新实例。如果备份里的实例 ID 已存在会自动生成新 ID。继续？'
+      )
+    ) {
+      return false
+    }
+  }
+
+  restoringAsNewLocal.value = true
+  const { data, error } = await restoreAsNewLocalBackup(
+    localBackupFile.value,
+    password
+  )
+  restoringAsNewLocal.value = false
+
+  if (error || !data) {
+    if (needsRestorePassword(error) && !password) {
+      openRestorePasswordModal('local-as-new')
+      return false
+    }
+    toast.add('error', `恢复为新实例失败：${error}`, '', 5000)
+    return false
+  }
+
+  await nonebotStore.loadBots()
+  selectRestoredBotById(data.project_id)
+  toast.add(
+    'success',
+    `已从备份创建新实例：${data.project_name}${
+      data.project_id_reassigned ? '（ID 已重新生成）' : ''
+    }`,
+    '',
+    5000
+  )
+  return true
+}
+
 const submitRestorePassword = async () => {
   if (!restorePasswordValue.value.trim()) {
     toast.add('warning', '请输入备份密码', '', 4000)
@@ -336,8 +435,16 @@ const submitRestorePassword = async () => {
   let ok = false
   if (restorePasswordMode.value === 'local') {
     ok = Boolean(await handleLocalRestore(restorePasswordValue.value))
-  } else {
+  } else if (restorePasswordMode.value === 'remote') {
     ok = Boolean(await handleRemoteRestore(
+      restorePasswordSource.value,
+      restorePasswordKey.value,
+      restorePasswordValue.value
+    ))
+  } else if (restorePasswordMode.value === 'local-as-new') {
+    ok = Boolean(await handleLocalRestoreAsNew(restorePasswordValue.value))
+  } else {
+    ok = Boolean(await handleRemoteRestoreAsNew(
       restorePasswordSource.value,
       restorePasswordKey.value,
       restorePasswordValue.value
@@ -723,13 +830,22 @@ void loadSettings()
             @change="handleLocalFileChange"
           />
         </label>
-        <button
-          class="btn btn-error text-base-100"
-          :disabled="restoringLocal"
-          @click="handleLocalRestore()"
-        >
-          {{ restoringLocal ? '恢复中...' : '上传并恢复' }}
-        </button>
+        <div class="flex gap-2 flex-wrap justify-end">
+          <button
+            class="btn btn-outline btn-primary"
+            :disabled="restoringAsNewLocal"
+            @click="handleLocalRestoreAsNew()"
+          >
+            {{ restoringAsNewLocal ? '创建中...' : '恢复为新实例' }}
+          </button>
+          <button
+            class="btn btn-error text-base-100"
+            :disabled="restoringLocal"
+            @click="handleLocalRestore()"
+          >
+            {{ restoringLocal ? '恢复中...' : '上传并恢复' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -764,13 +880,26 @@ void loadSettings()
                 <td>{{ formatSize(item.size) }}</td>
                 <td class="text-xs">{{ item.last_modified || '-' }}</td>
                 <td class="text-right">
-                  <button
-                    class="btn btn-xs btn-error text-base-100"
-                    :disabled="restoringKey === `webdav:${item.key}`"
-                    @click="handleRemoteRestore('webdav', item.key)"
-                  >
-                    {{ restoringKey === `webdav:${item.key}` ? '恢复中...' : '恢复' }}
-                  </button>
+                  <div class="flex justify-end gap-2 flex-wrap">
+                    <button
+                      class="btn btn-xs btn-outline btn-primary"
+                      :disabled="restoringAsNewKey === `webdav:${item.key}`"
+                      @click="handleRemoteRestoreAsNew('webdav', item.key)"
+                    >
+                      {{
+                        restoringAsNewKey === `webdav:${item.key}`
+                          ? '创建中...'
+                          : '恢复为新实例'
+                      }}
+                    </button>
+                    <button
+                      class="btn btn-xs btn-error text-base-100"
+                      :disabled="restoringKey === `webdav:${item.key}`"
+                      @click="handleRemoteRestore('webdav', item.key)"
+                    >
+                      {{ restoringKey === `webdav:${item.key}` ? '恢复中...' : '恢复' }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -808,13 +937,26 @@ void loadSettings()
                 <td>{{ formatSize(item.size) }}</td>
                 <td class="text-xs">{{ item.last_modified || '-' }}</td>
                 <td class="text-right">
-                  <button
-                    class="btn btn-xs btn-error text-base-100"
-                    :disabled="restoringKey === `s3:${item.key}`"
-                    @click="handleRemoteRestore('s3', item.key)"
-                  >
-                    {{ restoringKey === `s3:${item.key}` ? '恢复中...' : '恢复' }}
-                  </button>
+                  <div class="flex justify-end gap-2 flex-wrap">
+                    <button
+                      class="btn btn-xs btn-outline btn-primary"
+                      :disabled="restoringAsNewKey === `s3:${item.key}`"
+                      @click="handleRemoteRestoreAsNew('s3', item.key)"
+                    >
+                      {{
+                        restoringAsNewKey === `s3:${item.key}`
+                          ? '创建中...'
+                          : '恢复为新实例'
+                      }}
+                    </button>
+                    <button
+                      class="btn btn-xs btn-error text-base-100"
+                      :disabled="restoringKey === `s3:${item.key}`"
+                      @click="handleRemoteRestore('s3', item.key)"
+                    >
+                      {{ restoringKey === `s3:${item.key}` ? '恢复中...' : '恢复' }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>

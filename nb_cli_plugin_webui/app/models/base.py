@@ -80,6 +80,9 @@ class NoneBotProjectMeta(BaseModel, Generic[_T]):
     is_running: bool = False
     runtime_state: str = "stopped"
     startup_duration_seconds: float = 0.0
+    configured_port: int = Field(
+        default=0, description="Configured PORT from .env, 0 if unset."
+    )
 
     use_env: str = ".env"
     use_run_script: bool = False

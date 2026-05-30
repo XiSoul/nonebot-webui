@@ -12,6 +12,11 @@ const addBotModal = ref<InstanceType<typeof AddBotIndex> | null>(null)
 const envSwitchingProjectId = ref('')
 const ENV_OPTIONS = ['.env', '.env.prod'] as const
 
+// 修改路径弹窗状态
+const editingBotId = ref('')
+const editingPath = ref('')
+const updatingPath = ref(false)
+
 const getCurrentEnv = (bot: NoneBotProjectMeta) => {
   return bot.use_env === '.env.prod' ? '.env.prod' : '.env'
 }
@@ -23,6 +28,26 @@ const switchEnv = async (bot: NoneBotProjectMeta, env: (typeof ENV_OPTIONS)[numb
   envSwitchingProjectId.value = ''
 }
 
+const openEditPathModal = (bot: NoneBotProjectMeta) => {
+  editingBotId.value = bot.project_id
+  editingPath.value = bot.project_dir
+  const modal = document.getElementById('edit-path-modal') as HTMLDialogElement
+  modal?.showModal()
+}
+
+const confirmEditPath = async () => {
+  if (!editingBotId.value || !editingPath.value.trim()) return
+  updatingPath.value = true
+  const success = await nonebotStore.updateBotDir(editingBotId.value, editingPath.value.trim())
+  updatingPath.value = false
+  if (success) {
+    const modal = document.getElementById('edit-path-modal') as HTMLDialogElement
+    modal?.close()
+    editingBotId.value = ''
+    editingPath.value = ''
+  }
+}
+
 onMounted(async () => {
   await nonebotStore.loadBots()
 })
@@ -31,6 +56,45 @@ onMounted(async () => {
 <template>
   <CreateBotIndex ref="createBotModal" />
   <AddBotIndex ref="addBotModal" />
+
+  <!-- 修改路径弹窗 -->
+  <dialog id="edit-path-modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">修改实例路径</h3>
+      <div class="py-4">
+        <label class="form-control w-full">
+          <div class="label">
+            <span class="label-text">新路径</span>
+          </div>
+          <input
+            v-model="editingPath"
+            type="text"
+            class="input input-bordered w-full"
+            placeholder="请输入新的绝对路径"
+            @keydown.enter.prevent="confirmEditPath"
+          />
+          <div class="label">
+            <span class="label-text-alt opacity-70">路径下需要包含有效的 NoneBot 项目（有 pyproject.toml）</span>
+          </div>
+        </label>
+      </div>
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn btn-ghost mr-2">取消</button>
+        </form>
+        <button
+          class="btn btn-primary text-base-100"
+          :disabled="updatingPath || !editingPath.trim()"
+          @click="confirmEditPath"
+        >
+          {{ updatingPath ? '更新中...' : '确认' }}
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
 
   <div class="flex flex-col gap-4">
     <div class="p-6 rounded-box bg-base-200 flex flex-col md:flex-row md:items-center gap-4">
@@ -76,7 +140,15 @@ onMounted(async () => {
                   </button>
                 </div>
               </div>
-              <div class="text-xs opacity-60 truncate">{{ bot.project_dir }}</div>
+              <div class="flex items-center gap-2">
+                <div class="text-xs opacity-60 truncate flex-1">{{ bot.project_dir }}</div>
+                <button
+                  class="btn btn-ghost btn-xs opacity-50 hover:opacity-100 transition"
+                  @click.stop="openEditPathModal(bot)"
+                >
+                  修改路径
+                </button>
+              </div>
             </div>
           </div>
           <div class="shrink-0 flex flex-wrap justify-end gap-2">
@@ -89,19 +161,23 @@ onMounted(async () => {
             <span
               class="badge"
               :class="
-                getRuntimeState(bot) === 'running'
-                  ? 'badge-success text-base-100'
-                  : getRuntimeState(bot) === 'starting'
-                    ? 'badge-warning'
-                    : 'badge-ghost'
+                getRuntimeState(bot) === 'missing'
+                  ? 'badge-error text-base-100'
+                  : getRuntimeState(bot) === 'running'
+                    ? 'badge-success text-base-100'
+                    : getRuntimeState(bot) === 'starting'
+                      ? 'badge-warning'
+                      : 'badge-ghost'
               "
             >
               {{
-                getRuntimeState(bot) === 'running'
-                  ? '运行中'
-                  : getRuntimeState(bot) === 'starting'
-                    ? '启动中'
-                    : '未运行'
+                getRuntimeState(bot) === 'missing'
+                  ? '目录缺失'
+                  : getRuntimeState(bot) === 'running'
+                    ? '运行中'
+                    : getRuntimeState(bot) === 'starting'
+                      ? '启动中'
+                      : '未运行'
               }}
             </span>
           </div>

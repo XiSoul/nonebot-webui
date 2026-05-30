@@ -9,6 +9,9 @@ const store = useNoneBotStore()
 const toast = useToastStore()
 
 const deleteConfirmModal = ref<HTMLDialogElement>()
+const portConflictModal = ref<HTMLDialogElement>()
+const portConflictPeers = ref<{ project_id: string; project_name: string; runtime_state: string }[]>([])
+const portConflictPort = ref(0)
 const operating = ref(false)
 const deleting = ref(false)
 const deleteCountdown = ref(0)
@@ -156,6 +159,35 @@ const openDeleteConfirm = () => {
 
 const runBot = async () => {
   if (!store.selectedBot || operating.value || deleting.value) return
+
+  const port = Number(store.selectedBot.configured_port ?? 0)
+  if (port > 0) {
+    const myId = store.selectedBot.project_id
+    type Bot = { project_id: string; project_name: string; configured_port?: number; runtime_state?: string }
+    const allBots = Object.values(store.bots) as Bot[]
+    const peers = allBots.filter((bot) => {
+      if (!bot || bot.project_id === myId) return false
+      if (Number(bot.configured_port ?? 0) !== port) return false
+      const state = bot.runtime_state ?? ''
+      return state === 'running' || state === 'starting'
+    }).map((bot) => ({
+      project_id: bot.project_id,
+      project_name: bot.project_name,
+      runtime_state: bot.runtime_state ?? ''
+    }))
+    if (peers.length) {
+      portConflictPort.value = port
+      portConflictPeers.value = peers
+      portConflictModal.value?.showModal()
+      return
+    }
+  }
+
+  await executeRun()
+}
+
+const executeRun = async () => {
+  if (!store.selectedBot || operating.value || deleting.value) return
   operating.value = true
 
   const projectId = store.selectedBot.project_id
@@ -185,6 +217,11 @@ const runBot = async () => {
   }
 
   operating.value = false
+}
+
+const confirmPortConflictAndRun = async () => {
+  portConflictModal.value?.close()
+  await executeRun()
 }
 
 const stopBot = async () => {
@@ -317,6 +354,40 @@ watch(
         </button>
         <button class="btn btn-sm btn-ghost shadow-none" :disabled="deleting" @click="deleteConfirmModal?.close()">
           取消
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog ref="portConflictModal" class="modal">
+    <div class="modal-box rounded-[24px] border border-base-content/10 bg-base-100 shadow-2xl flex flex-col gap-5">
+      <div class="flex flex-col gap-2">
+        <h3 class="font-semibold text-lg">检测到端口冲突</h3>
+        <p class="text-sm opacity-70">
+          当前实例在 <code class="font-mono">.env</code> 中配置的端口
+          <span class="font-mono font-semibold">{{ portConflictPort }}</span>
+          已被以下正在运行 / 启动中的实例占用，强行启动会导致绑定失败：
+        </p>
+      </div>
+      <ul class="flex flex-col gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3">
+        <li
+          v-for="peer in portConflictPeers"
+          :key="peer.project_id"
+          class="flex items-center justify-between gap-3"
+        >
+          <span class="truncate font-medium">{{ peer.project_name }}</span>
+          <span class="badge badge-sm badge-warning">{{ peer.runtime_state === 'starting' ? '启动中' : '运行中' }}</span>
+        </li>
+      </ul>
+      <p class="text-xs opacity-60">
+        建议先在实例设置里把端口改成不同值，或者停止占用该端口的实例后重试。
+      </p>
+      <div class="grid gap-3 md:grid-cols-2">
+        <button class="btn btn-sm btn-ghost shadow-none" @click="portConflictModal?.close()">
+          取消启动
+        </button>
+        <button class="btn btn-sm btn-warning shadow-none" @click="confirmPortConflictAndRun()">
+          仍然启动
         </button>
       </div>
     </div>

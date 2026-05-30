@@ -451,7 +451,7 @@ async def restore_project_from_archive(project, archive_path: Path, password: st
     except Exception:
         pass
 
-    staged_dir = Path(
+    staged_dir: Optional[Path] = Path(
         tempfile.mkdtemp(prefix=".backup-restore-new-", dir=str(parent_dir))
     )
     staged_log_dir = Path(tempfile.mkdtemp(prefix=".backup-restore-logs-"))
@@ -460,39 +460,61 @@ async def restore_project_from_archive(project, archive_path: Path, password: st
         % (project_meta.project_id, _archive_timestamp())
     )
     old_dir_exists = False
+    project_replaced = False
 
     try:
-        _extract_archive_safely(
-            archive_path,
-            staged_dir,
-            log_stage_dir=staged_log_dir,
-            password=password,
-        )
-        if not any(staged_dir.iterdir()):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Backup archive is empty.",
+        try:
+            _extract_archive_safely(
+                archive_path,
+                staged_dir,
+                log_stage_dir=staged_log_dir,
+                password=password,
             )
+            if not any(staged_dir.iterdir()):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Backup archive is empty.",
+                )
 
-        if project_dir.exists():
-            shutil.move(str(project_dir), str(old_dir))
-            old_dir_exists = True
+            if project_dir.exists():
+                shutil.move(str(project_dir), str(old_dir))
+                old_dir_exists = True
 
-        shutil.move(str(staged_dir), str(project_dir))
-        staged_dir = Path()
+            shutil.move(str(staged_dir), str(project_dir))
+            staged_dir = None
+            project_replaced = True
 
-        _merge_directory_tree(staged_log_dir, get_global_logs_root())
+            try:
+                _merge_directory_tree(staged_log_dir, get_global_logs_root())
+            except Exception as log_err:
+                logger.exception(log_err)
+                logger.warning(
+                    f"Backup restore for {project_meta.project_name} succeeded, "
+                    f"but merging backed-up logs failed: {log_err}"
+                )
 
-        if old_dir_exists:
-            shutil.rmtree(old_dir, ignore_errors=True)
+            if old_dir_exists:
+                shutil.rmtree(old_dir, ignore_errors=True)
+                old_dir_exists = False
+        except HTTPException:
+            raise
+        except Exception as err:
+            logger.exception(err)
+            raise
     except Exception:
-        if staged_dir and staged_dir.exists():
-            shutil.rmtree(staged_dir, ignore_errors=True)
-        if staged_log_dir.exists():
-            shutil.rmtree(staged_log_dir, ignore_errors=True)
-
-        if not project_dir.exists() and old_dir_exists and old_dir.exists():
-            shutil.move(str(old_dir), str(project_dir))
+        if not project_replaced:
+            if staged_dir is not None and staged_dir.exists():
+                shutil.rmtree(staged_dir, ignore_errors=True)
+            if not project_dir.exists() and old_dir_exists and old_dir.exists():
+                try:
+                    shutil.move(str(old_dir), str(project_dir))
+                    old_dir_exists = False
+                except Exception as rollback_err:
+                    logger.exception(rollback_err)
+                    logger.error(
+                        f"Restore rollback failed for {project_meta.project_name}: "
+                        f"original project dir is kept at {old_dir}."
+                    )
         raise
     finally:
         if staged_log_dir.exists():
@@ -501,6 +523,215 @@ async def restore_project_from_archive(project, archive_path: Path, password: st
     if was_running:
         await run_nonebot_project(project)
     return was_running
+
+
+def _read_archive_metadata(archive_path: Path, password: str = "") -> Dict[str, str]:
+    try:
+        with _open_archive_for_reading(archive_path, password=password) as archive:
+            try:
+                with archive.open(BACKUP_METADATA_NAME, "r") as fp:
+                    raw = fp.read()
+            except KeyError as err:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Backup archive missing webui metadata; "
+                        "cannot restore as new instance."
+                    ),
+                ) from err
+    except RuntimeError as err:
+        message = str(err).lower()
+        if "password" in message or "decrypt" in message:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Backup password is invalid.",
+            ) from err
+        raise
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Backup archive metadata is corrupt.",
+        ) from err
+
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Backup archive metadata is malformed.",
+        )
+
+    project_id = str(data.get("project_id") or "").strip()
+    project_name = str(data.get("project_name") or "").strip()
+    if not project_id or not project_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Backup archive metadata is missing project identity; "
+                "cannot restore as new instance."
+            ),
+        )
+    return {"project_id": project_id, "project_name": project_name}
+
+
+async def restore_project_as_new_from_archive(
+    archive_path: Path, password: str = ""
+) -> Tuple[str, str, str, bool]:
+    from nb_cli_plugin_webui.app.project.service import (
+        _cleanup_project_metadata,
+        _normalize_project_name_key,
+        _project_dir_alias_keys,
+    )
+    from nb_cli_plugin_webui.app.utils.string_utils import (
+        generate_complexity_string,
+    )
+
+    metadata = _read_archive_metadata(archive_path, password=password)
+    original_project_id = metadata["project_id"]
+    original_project_name = metadata["project_name"]
+
+    existing = NoneBotProjectManager.get_project()
+
+    resolved_project_id = original_project_id
+    project_id_reassigned = False
+    if resolved_project_id in existing:
+        while True:
+            candidate = generate_complexity_string(6)
+            if candidate not in existing:
+                resolved_project_id = candidate
+                break
+        project_id_reassigned = True
+
+    existing_name_keys = {
+        _normalize_project_name_key(meta.project_name)
+        for meta in existing.values()
+        if getattr(meta, "project_name", None)
+    }
+    existing_alias_keys: set = set()
+    for meta in existing.values():
+        project_dir_value = getattr(meta, "project_dir", "") or ""
+        if project_dir_value:
+            try:
+                existing_alias_keys.update(
+                    _project_dir_alias_keys(Path(project_dir_value))
+                )
+            except Exception:
+                continue
+
+    resolved_project_name = original_project_name
+    if _normalize_project_name_key(resolved_project_name) in existing_name_keys:
+        suffix_index = 1
+        while True:
+            candidate = (
+                f"{original_project_name}-restored"
+                if suffix_index == 1
+                else f"{original_project_name}-restored-{suffix_index}"
+            )
+            if (
+                _normalize_project_name_key(candidate) not in existing_name_keys
+            ):
+                resolved_project_name = candidate
+                break
+            suffix_index += 1
+
+    base_dir = Path(Config.base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _dir_is_taken(candidate_dir: Path) -> bool:
+        if candidate_dir.exists():
+            return True
+        aliases = _project_dir_alias_keys(candidate_dir)
+        return any(alias in existing_alias_keys for alias in aliases)
+
+    target_dir = base_dir / resolved_project_name
+    if _dir_is_taken(target_dir):
+        suffix_index = 1
+        while True:
+            candidate_name = (
+                f"{resolved_project_name}-restored"
+                if suffix_index == 1
+                else f"{resolved_project_name}-restored-{suffix_index}"
+            )
+            candidate_dir = base_dir / candidate_name
+            if not _dir_is_taken(candidate_dir) and (
+                _normalize_project_name_key(candidate_name) not in existing_name_keys
+            ):
+                resolved_project_name = candidate_name
+                target_dir = candidate_dir
+                break
+            suffix_index += 1
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if any(target_dir.iterdir()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target project directory already exists and is not empty.",
+        )
+
+    staged_log_dir = Path(tempfile.mkdtemp(prefix=".restore-as-new-logs-"))
+    project_registered = False
+    try:
+        _extract_archive_safely(
+            archive_path,
+            target_dir,
+            log_stage_dir=staged_log_dir,
+            password=password,
+        )
+        if not any(target_dir.iterdir()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Backup archive is empty.",
+            )
+
+        try:
+            _merge_directory_tree(staged_log_dir, get_global_logs_root())
+        except Exception as log_err:
+            logger.exception(log_err)
+            logger.warning(
+                f"Restore-as-new for {resolved_project_name} succeeded, "
+                f"but merging backed-up logs failed: {log_err}"
+            )
+
+        manager = NoneBotProjectManager(project_id=resolved_project_id)
+        await manager.add_project(
+            project_name=resolved_project_name,
+            project_dir=target_dir,
+            mirror_url="https://pypi.tuna.tsinghua.edu.cn/simple",
+            adapters=[],
+            drivers=[],
+            plugins=[],
+            plugin_dirs=[],
+            discovered_plugin_dirs=[],
+            builtin_plugins=[],
+            use_env=".env",
+            sync_plugin_config=False,
+        )
+        project_registered = True
+
+        try:
+            await manager.sync_from_project_toml()
+        except Exception as sync_err:
+            logger.exception(sync_err)
+            logger.warning(
+                f"Restore-as-new for {resolved_project_name} registered, "
+                f"but syncing project toml failed: {sync_err}. "
+                "User can manually sync later."
+            )
+    except Exception:
+        if project_registered:
+            _cleanup_project_metadata(resolved_project_id)
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise
+    finally:
+        shutil.rmtree(staged_log_dir, ignore_errors=True)
+
+    return (
+        resolved_project_id,
+        resolved_project_name,
+        str(target_dir),
+        project_id_reassigned,
+    )
 
 
 @dataclass

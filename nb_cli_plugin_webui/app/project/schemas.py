@@ -36,5 +36,9 @@ class AddProjectData(BaseModel):
     builtin_plugins: List[str] = list()
 
 
+class UpdateProjectDirData(BaseModel):
+    project_dir: str
+
+
 class ListProjectResponse(GenericResponse[Dict[str, NoneBotProjectMeta]]):
     pass

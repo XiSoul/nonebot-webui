@@ -92,6 +92,9 @@ import type {
   DeleteProjectV1ProjectDeleteDeleteResponse,
   ListProjectV1ProjectListGetError,
   ListProjectV1ProjectListGetResponse,
+  UpdateProjectDirV1ProjectUpdateDirPostData,
+  UpdateProjectDirV1ProjectUpdateDirPostResponse,
+  UpdateProjectDirV1ProjectUpdateDirPostError,
   CheckProjectTomlV1ProjectCheckTomlPostData,
   CheckProjectTomlV1ProjectCheckTomlPostError,
   CheckProjectTomlV1ProjectCheckTomlPostResponse,
@@ -616,6 +619,23 @@ export class ProjectService {
     >({
       ...options,
       url: '/v1/project/list'
+    })
+  }
+
+  /**
+   * Update Project Dir
+   * - 更新 NoneBot 实例的路径
+   */
+  public static updateProjectDirV1ProjectUpdateDirPost<ThrowOnError extends boolean = false>(
+    options: Options<UpdateProjectDirV1ProjectUpdateDirPostData, ThrowOnError>
+  ) {
+    return (options?.client ?? client).post<
+      UpdateProjectDirV1ProjectUpdateDirPostResponse,
+      UpdateProjectDirV1ProjectUpdateDirPostError,
+      ThrowOnError
+    >({
+      ...options,
+      url: '/v1/project/update-dir'
     })
   }
 

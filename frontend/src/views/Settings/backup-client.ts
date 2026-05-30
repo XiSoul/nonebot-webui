@@ -39,6 +39,14 @@ export type BackupRestoreResult = {
   message: string
 }
 
+export type BackupRestoreAsNewResult = {
+  project_id: string
+  project_name: string
+  project_dir: string
+  project_id_reassigned: boolean
+  message: string
+}
+
 export type BackupConnectivityResult = {
   ok: boolean
   source: BackupSource
@@ -236,5 +244,49 @@ export const restoreLocalBackup = async (projectId: string, file: File, password
   }
 
   const json = (await response.json()) as GenericResponse<BackupRestoreResult>
+  return { data: json.detail, error: undefined }
+}
+
+export const restoreAsNewRemoteBackup = async (
+  source: BackupSource,
+  key: string,
+  password = ''
+) => {
+  const response = await fetch(
+    generateURLForWebUI('/v1/backup/restore-as-new/remote'),
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ source, key, password })
+    }
+  )
+
+  if (!response.ok) {
+    return { data: undefined, error: await parseErrorMessage(response) }
+  }
+
+  const json = (await response.json()) as GenericResponse<BackupRestoreAsNewResult>
+  return { data: json.detail, error: undefined }
+}
+
+export const restoreAsNewLocalBackup = async (file: File, password = '') => {
+  const response = await fetch(
+    generateURLForWebUI('/v1/backup/restore-as-new/local'),
+    {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders('application/octet-stream'),
+        'X-Backup-Filename': encodeURIComponent(file.name),
+        'X-Backup-Password': password
+      },
+      body: file
+    }
+  )
+
+  if (!response.ok) {
+    return { data: undefined, error: await parseErrorMessage(response) }
+  }
+
+  const json = (await response.json()) as GenericResponse<BackupRestoreAsNewResult>
   return { data: json.detail, error: undefined }
 }
