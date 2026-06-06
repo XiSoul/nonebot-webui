@@ -13,10 +13,13 @@ BASE_DATA_DIR = (DATA_DIR / APP_NAME).resolve()
 BASE_CONFIG_DIR = (CONFIG_DIR / APP_NAME).resolve()
 
 if "WEBUI_BUILD" in os.environ:
-    cwd = Path.cwd()
-    BASE_CACHE_DIR = cwd
-    BASE_DATA_DIR = cwd
-    BASE_CONFIG_DIR = cwd
+    default_data_dir = Path("/data")
+    data_dir = Path(os.getenv("WEBUI_DATA_DIR", str(default_data_dir))).expanduser()
+    config_dir = Path(os.getenv("WEBUI_CONFIG_DIR", str(data_dir))).expanduser()
+    cache_dir = Path(os.getenv("WEBUI_CACHE_DIR", str(data_dir))).expanduser()
+    BASE_CACHE_DIR = cache_dir.resolve()
+    BASE_DATA_DIR = data_dir.resolve()
+    BASE_CONFIG_DIR = config_dir.resolve()
 
 
 def _ensure_dir(path: Path) -> None:

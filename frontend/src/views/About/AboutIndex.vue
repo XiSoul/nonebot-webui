@@ -4,12 +4,22 @@ const branchName = 'master'
 const usageDocUrl = `${repoUrl}/blob/${branchName}/docs/USAGE.md`
 const updateDocUrl = `${repoUrl}/blob/${branchName}/docs/UPDATE.md`
 const deployDocUrl = `${repoUrl}/blob/${branchName}/docs/DEPLOY.md`
+const qqGroup = '306146537'
 
 const features = [
   '面向 NoneBot 实例的创建、导入、运行、终端与文件管理',
   '支持 Docker 场景部署、代理与镜像源配置',
   '支持扩展安装、版本检查、更新与日志排查',
   '适合 NAS、WSL 和常驻容器环境的日常运维'
+]
+
+const communityCards = [
+  {
+    title: 'QQ 交流群',
+    description: '部署、更新、使用或扩展开发遇到问题，欢迎加入群聊交流。',
+    icon: 'groups',
+    value: qqGroup
+  }
 ]
 
 const docs = [
@@ -61,8 +71,41 @@ const docs = [
       </div>
     </section>
 
+    <section
+      class="nb-panel-surface relative overflow-hidden rounded-[28px] border border-primary/15 bg-primary/5 p-6"
+    >
+      <div class="absolute right-6 top-4 hidden text-[6rem] leading-none text-primary/10 md:block">
+        QQ
+      </div>
+      <div class="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div
+          v-for="card in communityCards"
+          :key="card.title"
+          class="flex min-w-0 flex-1 items-start gap-4"
+        >
+          <span
+            class="material-symbols-outlined shrink-0 rounded-2xl bg-primary/12 p-3 text-3xl text-primary ring-1 ring-primary/15"
+          >
+            {{ card.icon }}
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-xl font-semibold">{{ card.title }}</h2>
+            <p class="mt-1 text-sm leading-6 text-base-content/70">
+              {{ card.description }}
+            </p>
+          </div>
+        </div>
+        <div
+          class="inline-flex w-fit shrink-0 items-center gap-2 rounded-2xl border border-primary/20 bg-base-100/80 px-4 py-3 text-primary shadow-sm shadow-primary/10"
+        >
+          <span class="text-sm font-medium text-base-content/60">群号</span>
+          <span class="font-mono text-2xl font-bold tracking-wide">{{ qqGroup }}</span>
+        </div>
+      </div>
+    </section>
+
     <section class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <div class="rounded-[24px] border border-base-content/10 bg-base-200/80 p-6">
+      <div class="nb-panel-surface rounded-[28px] border border-base-content/10 bg-base-200/80 p-6">
         <div class="mb-4 flex items-center gap-3">
           <span class="material-symbols-outlined text-primary">deployed_code</span>
           <h2 class="text-xl font-semibold">项目简介</h2>
@@ -78,7 +121,7 @@ const docs = [
         </div>
       </div>
 
-      <div class="rounded-[24px] border border-base-content/10 bg-base-200/80 p-6">
+      <div class="nb-panel-surface rounded-[28px] border border-base-content/10 bg-base-200/80 p-6">
         <div class="mb-4 flex items-center gap-3">
           <span class="material-symbols-outlined text-primary">newsmode</span>
           <h2 class="text-xl font-semibold">更新文档</h2>

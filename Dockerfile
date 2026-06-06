@@ -1,4 +1,4 @@
-ARG APP_VERSION=0.4.8
+ARG APP_VERSION=0.4.10
 ARG VCS_REF=
 ARG PYTHON_IMAGE=3.11
 ARG VARIANT=
@@ -22,7 +22,7 @@ RUN pnpm -C frontend run build-only
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT} AS build-stage
 
-ARG APP_VERSION=0.4.8
+ARG APP_VERSION=0.4.10
 ARG VCS_REF=unknown
 ARG PIP_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL
@@ -51,7 +51,7 @@ RUN pip install --no-deps .
 
 FROM python:${PYTHON_IMAGE}${VARIANT:+-$VARIANT}
 
-ARG APP_VERSION=0.4.8
+ARG APP_VERSION=0.4.10
 ARG VCS_REF=unknown
 ARG APT_MIRROR
 EXPOSE 18080
@@ -63,6 +63,9 @@ LABEL org.opencontainers.image.version="${APP_VERSION}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 
 ENV WEBUI_BUILD=1
+ENV WEBUI_DATA_DIR=/data
+ENV WEBUI_CONFIG_DIR=/data
+ENV WEBUI_CACHE_DIR=/data
 ENV WEBUI_VERSION=${APP_VERSION}
 ENV WEBUI_VCS_REF=${VCS_REF}
 ENV DEBIAN_FRONTEND=noninteractive
@@ -177,4 +180,4 @@ RUN if [ -n "$APT_MIRROR" ]; then \
 CMD ["nb", "ui", "run"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import json,sys,urllib.request; from pathlib import Path; path=Path('/app/config.json'); port=str((json.loads(path.read_text(encoding='utf-8')).get('port') if path.exists() else None) or '18080'); urllib.request.urlopen(f'http://127.0.0.1:{port}', timeout=5); sys.exit(0)"
+    CMD python -c "import json,sys,urllib.request; from pathlib import Path; path=Path('/data/config.json'); port=str((json.loads(path.read_text(encoding='utf-8')).get('port') if path.exists() else None) or '18080'); urllib.request.urlopen(f'http://127.0.0.1:{port}', timeout=5); sys.exit(0)"

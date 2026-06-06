@@ -364,37 +364,39 @@ watch(
 </script>
 
 <template>
-  <div v-if="!nonebotStore.selectedBot" class="rounded-box bg-base-200 p-6 text-center">
-    请先选择实例。
+  <div v-if="!nonebotStore.selectedBot" class="nb-empty-state text-center">
+    <div>
+      <div class="text-lg font-semibold">请先选择实例</div>
+      <p class="mt-2 text-sm text-base-content/60">选择一个 NoneBot 实例后即可编辑配置文件。</p>
+    </div>
   </div>
 
-  <div v-else class="flex flex-col gap-4">
-    <div class="rounded-box bg-base-200 p-6 flex flex-col gap-2">
-      <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div class="space-y-1">
-          <h2 class="text-xl font-semibold">实例设置</h2>
-          <div class="text-sm opacity-70">
-            这里统一编辑 `pyproject.toml`、`.env`、`.env.prod`。上方预设项和下方原始文本都可以使用，保存后会自动同步。
-          </div>
-        </div>
+  <div v-else class="nb-page">
+    <div class="nb-page-heading">
+      <div class="space-y-2">
+        <div class="nb-kicker">Project Settings</div>
+        <h2 class="text-2xl font-semibold tracking-tight">实例设置</h2>
+        <p class="max-w-3xl text-sm leading-6 text-base-content/70">
+          统一编辑 pyproject.toml、.env 和 .env.prod。上方预设项和下方原始文本都可以使用，保存后会自动同步。
+        </p>
+      </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="badge badge-primary text-base-100">
-            当前实例：{{ nonebotStore.selectedBot.project_name }}
-          </span>
-          <span class="badge badge-outline">
-            当前环境：{{ nonebotStore.selectedBot.use_env || '.env' }}
-          </span>
-        </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="badge badge-primary text-base-100">
+          当前实例：{{ nonebotStore.selectedBot.project_name }}
+        </span>
+        <span class="badge badge-outline">
+          当前环境：{{ nonebotStore.selectedBot.use_env || '.env' }}
+        </span>
       </div>
     </div>
 
-    <div v-if="loading" class="rounded-box bg-base-200 p-6 text-center">加载中...</div>
+    <div v-if="loading" class="nb-empty-state text-center">加载中...</div>
 
-    <div v-else class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
-      <section class="rounded-box bg-base-200 p-5 flex h-full min-h-[760px] flex-col gap-4">
+    <div v-else class="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
+      <section class="nb-panel-surface flex h-full min-h-[760px] flex-col gap-4 rounded-[28px] p-5">
         <div class="flex flex-col gap-2">
-          <h3 class="text-lg font-semibold">pyproject.toml</h3>
+          <h3 class="nb-section-title">pyproject.toml</h3>
           <div class="text-sm opacity-70">
             适配器、已配置插件、内置插件和本地插件目录都在这里。保存后会自动同步实例元数据。
           </div>
@@ -425,11 +427,11 @@ watch(
       <section
         v-for="card in envCards"
         :key="card.name"
-        class="rounded-box bg-base-200 p-5 flex h-full min-h-[760px] flex-col gap-4"
+        class="nb-panel-surface flex h-full min-h-[760px] flex-col gap-4 rounded-[28px] p-5"
       >
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between gap-2">
-            <h3 class="text-lg font-semibold">{{ card.title }}</h3>
+            <h3 class="nb-section-title">{{ card.title }}</h3>
             <span
               v-if="nonebotStore.selectedBot.use_env === card.name"
               class="badge badge-success text-base-100"

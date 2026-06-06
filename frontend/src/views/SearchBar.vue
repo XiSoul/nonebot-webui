@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { useSearchStore } from './client'
+import { useSearchStore } from './Store/client'
 import {
   type ModuleType,
   type nb_cli_plugin_webui__app__models__types__SearchTag,

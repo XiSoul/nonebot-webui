@@ -287,11 +287,15 @@ watch(
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="rounded-box bg-base-200 p-6 flex flex-col gap-3">
+  <div class="nb-page">
+    <section class="nb-page-heading">
       <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div class="space-y-1">
-          <h2 class="text-xl font-semibold">文件管理</h2>
+          <div class="nb-kicker">
+            <span class="material-symbols-outlined text-base text-primary">folder_open</span>
+            File Workspace
+          </div>
+          <h2 class="mt-3 text-2xl font-bold tracking-tight md:text-3xl">文件管理</h2>
           <div class="text-sm opacity-70">
             根据实例实际安装方式自动识别目录来源。映射实例显示映射目录，安装在容器内的实例显示容器内实例目录。
           </div>
@@ -305,7 +309,7 @@ watch(
         </div>
       </div>
 
-      <div class="rounded-xl border border-base-content/10 bg-base-100 px-4 py-4">
+      <div class="rounded-[1.25rem] border border-base-content/10 bg-base-100/55 px-4 py-4 backdrop-blur">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="badge badge-outline">{{ currentRoot?.label || '实例目录' }}</span>
           <span v-if="currentRoot?.scope === 'installed'" class="badge badge-warning">Docker 内</span>
@@ -318,7 +322,7 @@ watch(
           {{ currentRoot?.root_path || '等待加载...' }}
         </div>
       </div>
-    </div>
+    </section>
 
     <div
       v-if="currentRoot && !currentRoot.available"
@@ -330,11 +334,11 @@ watch(
       </div>
     </div>
 
-    <div class="flex flex-col gap-4">
-      <section class="rounded-box bg-base-200 p-4 flex min-h-0 flex-col gap-4 overflow-hidden">
+    <div class="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
+      <section class="nb-panel-surface rounded-[1.75rem] p-4 flex min-h-0 flex-col gap-4 overflow-hidden">
         <div class="flex items-center justify-between gap-2">
           <div>
-            <h3 class="text-lg font-semibold">目录浏览</h3>
+            <h3 class="nb-section-title">目录浏览</h3>
             <div class="text-xs opacity-60 mt-1 break-all">
               {{ currentRoot?.root_path || '未选择目录' }}
             </div>
@@ -342,7 +346,7 @@ watch(
           <span class="badge badge-outline">{{ entries.length }} 项</span>
         </div>
 
-        <div class="breadcrumbs text-sm overflow-x-auto whitespace-nowrap">
+        <div class="nb-toolbar rounded-[1.25rem] px-4 py-2 breadcrumbs text-sm overflow-x-auto whitespace-nowrap">
           <ul class="flex-nowrap">
             <li><a @click="void loadList('')">根目录</a></li>
             <li v-for="(part, index) in breadcrumbParts" :key="`${part}-${index}`">
@@ -377,7 +381,7 @@ watch(
           </button>
         </div>
 
-        <div class="h-[420px] overflow-auto rounded-box border border-base-300 bg-base-100">
+        <div class="nb-table-wrap h-[520px] xl:h-auto xl:flex-1">
           <table class="table table-sm min-w-[980px]">
             <thead>
               <tr>
@@ -391,7 +395,7 @@ watch(
                 <td colspan="3" class="text-center opacity-60">加载中...</td>
               </tr>
               <tr v-else-if="!entries.length">
-                <td colspan="3" class="text-center opacity-60">当前目录为空</td>
+                <td colspan="3" class="text-center opacity-60 py-10">当前目录为空</td>
               </tr>
               <tr
                 v-for="entry in entries"
@@ -421,10 +425,10 @@ watch(
         </div>
       </section>
 
-      <section class="rounded-box bg-base-200 p-4 flex h-[720px] min-h-0 flex-col gap-4 overflow-hidden">
+      <section class="nb-panel-surface rounded-[1.75rem] p-4 flex h-[720px] min-h-0 flex-col gap-4 overflow-hidden">
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <h3 class="text-lg font-semibold">文件编辑</h3>
+            <h3 class="nb-section-title">文件编辑</h3>
             <div class="text-xs opacity-60 mt-1 break-all">
               {{ openedFilePath || '请选择并双击一个文件开始编辑' }}
             </div>
@@ -446,7 +450,7 @@ watch(
 
         <div
           v-if="!openedFilePath"
-          class="flex-1 rounded-box border border-dashed border-base-300 bg-base-100 flex items-center justify-center text-sm opacity-60 min-h-0"
+          class="nb-empty-state flex-1 text-sm opacity-70 min-h-0"
         >
           双击左侧文件列表中的文件即可打开编辑。
         </div>
@@ -458,7 +462,7 @@ watch(
             <span v-if="loadingContent">文件加载中...</span>
           </div>
 
-          <div class="min-h-0 flex-1 rounded-lg bg-base-100 p-2 shadow-inner">
+          <div class="min-h-0 flex-1 rounded-[1.25rem] border border-base-content/10 bg-base-100/70 p-2 shadow-inner backdrop-blur">
             <EditorItem
               v-model="editorValue"
               class="h-full"

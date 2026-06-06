@@ -157,16 +157,25 @@ void loadSettings().then(refreshLogs)
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="rounded-box bg-base-200 p-6 flex flex-col gap-2">
-      <h2 class="text-xl font-semibold">全局日志</h2>
-      <div class="text-sm opacity-70">
-        这里可以查看 WebUI 操作日志和实例运行日志。日志按天分文件存储，支持按等级、日期、实例和关键字过滤。
+  <div class="nb-page">
+    <section class="nb-page-heading">
+      <div>
+        <div class="nb-kicker">
+          <span class="material-symbols-outlined text-base text-primary">article</span>
+          Log Center
+        </div>
+        <h2 class="mt-3 text-2xl font-bold tracking-tight md:text-3xl">全局日志</h2>
+        <div class="mt-2 text-sm opacity-70">
+          这里可以查看 WebUI 操作日志和实例运行日志。日志按天分文件存储，支持按等级、日期、实例和关键字过滤。
+        </div>
       </div>
-    </div>
+      <button class="btn btn-outline btn-primary" :disabled="loadingEntries" @click="refreshLogs">
+        {{ loadingEntries ? '刷新中...' : '刷新日志' }}
+      </button>
+    </section>
 
     <div class="grid grid-cols-1 xl:grid-cols-[1.2fr_1.4fr] gap-4 items-start">
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+      <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
         <div class="flex items-center justify-between gap-2">
           <h3 class="text-lg font-semibold">日志设置</h3>
           <button class="btn btn-primary text-base-100" :disabled="savingSettings || loadingSettings" @click="saveSettings">
@@ -201,10 +210,10 @@ void loadSettings().then(refreshLogs)
         </div>
       </section>
 
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+      <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
         <div class="flex items-center justify-between gap-2">
           <h3 class="text-lg font-semibold">查看筛选</h3>
-          <button class="btn btn-outline btn-error" :disabled="loadingEntries" @click="refreshLogs">
+          <button class="btn btn-outline btn-primary" :disabled="loadingEntries" @click="refreshLogs">
             {{ loadingEntries ? '刷新中...' : '刷新日志' }}
           </button>
         </div>
@@ -255,18 +264,18 @@ void loadSettings().then(refreshLogs)
       </section>
     </div>
 
-    <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+    <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
       <div class="flex items-center justify-between gap-2">
         <h3 class="text-lg font-semibold">日志内容</h3>
         <span class="badge badge-outline">{{ entries.length }} 条</span>
       </div>
 
-      <div v-if="!filters.date" class="text-sm opacity-60">请先选择一个日志日期。</div>
-      <div v-else-if="!entries.length" class="text-sm opacity-60">当前筛选条件下暂无日志。</div>
+      <div v-if="!filters.date" class="nb-empty-state text-sm opacity-70">请先选择一个日志日期。</div>
+      <div v-else-if="!entries.length" class="nb-empty-state text-sm opacity-70">当前筛选条件下暂无日志。</div>
 
       <div
         v-else
-        class="rounded-xl border border-base-content/10 bg-base-300/40 px-4 py-3 h-[65vh] overflow-auto font-mono text-xs leading-6"
+        class="nb-code-surface px-4 py-3 h-[65vh] overflow-auto font-mono text-xs leading-6"
       >
         <div
           v-for="item in entries"

@@ -470,33 +470,32 @@ void loadSettings()
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="rounded-box bg-base-200 p-6 flex flex-col gap-2">
-      <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div class="space-y-1">
-          <h2 class="text-xl font-semibold">备份恢复</h2>
-          <div class="text-sm opacity-70">
-            这里可以备份当前实例文件夹到本地、WebDAV 或 S3，也可以从本地压缩包或远端备份恢复。
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <span v-if="selectedProjectName" class="badge badge-primary text-base-100">
-            当前实例：{{ selectedProjectName }}
-          </span>
-          <span v-else class="badge badge-outline">请先选择实例</span>
-        </div>
+  <div class="nb-page">
+    <div class="nb-page-heading">
+      <div class="space-y-2">
+        <div class="nb-kicker">Backup Center</div>
+        <h2 class="text-2xl font-semibold tracking-tight">备份恢复</h2>
+        <p class="max-w-3xl text-sm leading-6 text-base-content/70">
+          备份当前实例文件夹到本地、WebDAV 或 S3，也可以从本地压缩包或远端备份恢复。
+        </p>
       </div>
 
-      <div class="alert alert-warning text-sm">
-        恢复会覆盖当前实例文件夹内容。若实例正在运行，系统会先停止实例，恢复成功后再按原状态自动启动。
+      <div class="flex flex-wrap items-center gap-2">
+        <span v-if="selectedProjectName" class="badge badge-primary text-base-100">
+          当前实例：{{ selectedProjectName }}
+        </span>
+        <span v-else class="badge badge-outline">请先选择实例</span>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+    <div class="alert alert-warning rounded-[22px] border border-warning/30 bg-warning/10 text-sm">
+      恢复会覆盖当前实例文件夹内容。若实例正在运行，系统会先停止实例，恢复成功后再按原状态自动启动。
+    </div>
+
+    <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+      <section class="nb-panel-surface flex flex-col gap-4 rounded-[28px] p-5">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">WebDAV 配置</h3>
+          <h3 class="nb-section-title">WebDAV 配置</h3>
           <div class="flex items-center gap-2">
             <span
               :class="
@@ -556,9 +555,9 @@ void loadSettings()
         </div>
       </section>
 
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+      <section class="nb-panel-surface flex flex-col gap-4 rounded-[28px] p-5">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">S3 配置</h3>
+          <h3 class="nb-section-title">S3 配置</h3>
           <div class="flex items-center gap-2">
             <span
               :class="
@@ -642,7 +641,7 @@ void loadSettings()
       </section>
     </div>
 
-    <div v-if="lastTestResult" class="rounded-box bg-base-200 p-5 flex flex-col gap-2">
+    <div v-if="lastTestResult" class="nb-panel-surface flex flex-col gap-2 rounded-[28px] p-5">
       <div class="flex items-center gap-2">
         <span
           :class="
@@ -660,10 +659,10 @@ void loadSettings()
       </div>
     </div>
 
-    <div class="rounded-box bg-base-200 p-5 flex flex-col gap-5">
+    <div class="nb-panel-surface flex flex-col gap-5 rounded-[28px] p-5">
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div class="flex items-center gap-2 flex-wrap">
-          <h3 class="text-lg font-semibold">备份设置与操作</h3>
+          <h3 class="nb-section-title">备份设置与操作</h3>
           <span
             :class="
               settings.archive_password_configured
@@ -815,9 +814,9 @@ void loadSettings()
       </div>
     </div>
 
-    <div class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+    <div class="nb-panel-surface flex flex-col gap-4 rounded-[28px] p-5">
       <div class="flex items-center justify-between gap-2">
-        <h3 class="text-lg font-semibold">本地恢复</h3>
+        <h3 class="nb-section-title">本地恢复</h3>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
@@ -850,9 +849,9 @@ void loadSettings()
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+      <section class="nb-panel-surface flex flex-col gap-4 rounded-[28px] p-5">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">WebDAV 备份列表</h3>
+          <h3 class="nb-section-title">WebDAV 备份列表</h3>
           <button
             class="btn btn-sm btn-ghost text-error"
             :disabled="refreshingSource === 'webdav'"
@@ -907,9 +906,9 @@ void loadSettings()
         </div>
       </section>
 
-      <section class="rounded-box bg-base-200 p-5 flex flex-col gap-4">
+      <section class="nb-panel-surface flex flex-col gap-4 rounded-[28px] p-5">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">S3 备份列表</h3>
+          <h3 class="nb-section-title">S3 备份列表</h3>
           <button
             class="btn btn-sm btn-ghost text-error"
             :disabled="refreshingSource === 's3'"
@@ -966,7 +965,7 @@ void loadSettings()
     </div>
 
     <dialog class="modal" :class="{ 'modal-open': restorePasswordModalVisible }">
-      <div class="modal-box">
+      <div class="modal-box rounded-[26px] border border-base-content/10 bg-base-100 shadow-2xl">
         <h3 class="font-semibold text-lg">请输入备份密码</h3>
         <p class="text-sm opacity-70 mt-2">
           检测到当前压缩包已加密，请输入正确的备份密码后再继续恢复。

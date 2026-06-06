@@ -34,7 +34,7 @@ const TERMINAL_THEMES: Record<
 > = {
   midnight: {
     label: 'Midnight',
-    accent: 'from-cyan-400/30 via-sky-500/20 to-transparent',
+    accent: 'from-primary/18 via-secondary/10 to-transparent',
     theme: {
       background: '#09111f',
       foreground: '#e5edf7',
@@ -721,11 +721,11 @@ onUnmounted(() => {
 
 <template>
   <section
-    class="terminal-workspace w-full overflow-hidden rounded-[30px] border border-base-content/10 bg-base-200/90 shadow-sm"
+    class="terminal-workspace nb-panel-surface w-full overflow-hidden rounded-[30px]"
   >
     <div class="flex flex-col lg:flex-row" :class="workspaceHeightClass">
       <aside
-        class="relative overflow-hidden border-b border-base-content/10 bg-base-100/70 backdrop-blur lg:w-[22rem] lg:border-b-0 lg:border-r"
+        class="relative overflow-hidden border-b border-base-content/10 bg-base-100/78 backdrop-blur-xl lg:w-[22rem] lg:border-b-0 lg:border-r"
       >
         <div
           class="pointer-events-none absolute inset-0 bg-gradient-to-br"
@@ -758,7 +758,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="rounded-[24px] border border-base-content/10 bg-base-100/80 p-4 shadow-sm">
+          <div class="rounded-[24px] border border-primary/10 bg-base-100/82 p-4 shadow-sm shadow-primary/5">
             <div class="flex items-center justify-between gap-3">
               <div class="text-[11px] uppercase tracking-[0.22em] text-base-content/45">
                 Session
@@ -781,7 +781,7 @@ onUnmounted(() => {
             <p class="mt-3 text-sm leading-6 text-base-content/70">
               {{ workspaceSummary }}
             </p>
-            <div class="mt-4 rounded-2xl bg-base-200/80 px-3 py-3">
+            <div class="mt-4 rounded-2xl border border-primary/10 bg-primary/6 px-3 py-3">
               <div class="text-[11px] uppercase tracking-[0.2em] text-base-content/40">
                 Path
               </div>
@@ -850,7 +850,7 @@ onUnmounted(() => {
             <div
               v-for="item in sidebarStats"
               :key="item.label"
-              class="rounded-[22px] border border-base-content/8 bg-base-100/80 px-4 py-3"
+              class="rounded-[22px] border border-primary/10 bg-base-100/78 px-4 py-3 shadow-sm shadow-primary/5"
             >
               <div class="text-[11px] uppercase tracking-[0.18em] text-base-content/45">
                 {{ item.label }}

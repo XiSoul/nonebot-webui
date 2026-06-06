@@ -132,9 +132,9 @@ const filterItems: filterItem[] = [
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="nb-toolbar flex flex-col gap-4 p-4 md:p-5">
     <div class="w-full flex justify-center">
-      <div class="p-2 pl-4 bg-base-200 rounded-box w-full lg:w-3/4 flex items-center gap-2">
+      <div class="w-full rounded-[1.25rem] border border-base-content/10 bg-base-100/60 p-2 pl-4 shadow-inner backdrop-blur lg:w-3/4 flex items-center gap-2">
         <div class="w-full flex flex-wrap items-center gap-1">
           <div
             v-for="tag in store.searchTags"

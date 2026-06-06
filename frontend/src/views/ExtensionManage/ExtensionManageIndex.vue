@@ -234,31 +234,35 @@ const updatePlugin = async (plugin: Plugin) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 w-full">
-    <div class="w-full p-6 bg-base-200 rounded-box flex items-center">
-      <div class="shrink-0 font-semibold text-lg">
-        <h3>模块操作</h3>
+  <div class="nb-page">
+    <div class="nb-page-heading">
+      <div class="space-y-2">
+        <div class="nb-kicker">Module Ops</div>
+        <h2 class="text-2xl font-semibold tracking-tight">模块操作</h2>
+        <p class="max-w-3xl text-sm leading-6 text-base-content/70">
+          管理当前实例的插件、适配器和驱动版本。实例运行时会锁定高风险模块操作。
+        </p>
       </div>
 
-      <div class="w-full flex items-center justify-end gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <span v-if="isModuleActionLocked" class="badge badge-warning">
           实例运行中，模块操作已锁定
         </span>
-        <button class="btn btn-sm shadow-none btn-primary text-base-100" @click="updateLatestVersion()">
+        <button class="btn btn-sm btn-primary text-base-100 shadow-none" @click="updateLatestVersion()">
           检查更新
         </button>
         <button class="btn btn-sm shadow-none" @click="getData()">刷新</button>
       </div>
     </div>
 
-    <div class="collapse bg-base-200">
+    <div class="collapse nb-panel-surface rounded-[28px]">
       <input type="checkbox" />
       <div class="collapse-title p-6">
-        <h3 class="font-semibold text-lg">插件管理</h3>
+        <h3 class="nb-section-title">插件管理</h3>
       </div>
 
       <div class="collapse-content px-4 overflow-x-auto relative pb-4">
-        <table class="table table-sm">
+        <table class="table table-sm nb-table-wrap">
           <thead>
             <tr>
               <th>名称</th>
@@ -327,14 +331,14 @@ const updatePlugin = async (plugin: Plugin) => {
       </div>
     </div>
 
-    <div class="collapse bg-base-200">
+    <div class="collapse nb-panel-surface rounded-[28px]">
       <input type="checkbox" />
       <div class="collapse-title p-6">
-        <h3 class="font-semibold text-lg">适配器管理</h3>
+        <h3 class="nb-section-title">适配器管理</h3>
       </div>
       <div class="collapse-content px-4 pb-4">
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm nb-table-wrap">
             <thead>
               <tr>
                 <th>名称</th>
@@ -364,14 +368,14 @@ const updatePlugin = async (plugin: Plugin) => {
       </div>
     </div>
 
-    <div class="collapse bg-base-200">
+    <div class="collapse nb-panel-surface rounded-[28px]">
       <input type="checkbox" />
       <div class="collapse-title p-6">
-        <h3 class="font-semibold text-lg">驱动管理</h3>
+        <h3 class="nb-section-title">驱动管理</h3>
       </div>
       <div class="collapse-content px-4 pb-4">
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm nb-table-wrap">
             <thead>
               <tr>
                 <th>名称</th>

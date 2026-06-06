@@ -579,6 +579,7 @@ def _build_shell_bootstrap_script(
         str(proxy_env.get("NO_PROXY") or proxy_env.get("no_proxy") or "")
     )
     return (
+        "stty -echo 2>/dev/null || true\n"
         f"__nb_webui_python={quoted_python}\n"
         f"__nb_webui_saved_http_proxy={saved_http_proxy}\n"
         f"__nb_webui_saved_https_proxy={saved_https_proxy}\n"
@@ -602,6 +603,8 @@ def _build_shell_bootstrap_script(
         '  if [ -n "${__nb_webui_saved_no_proxy:-}" ]; then export NO_PROXY="$__nb_webui_saved_no_proxy"; export no_proxy="$__nb_webui_saved_no_proxy"; fi\n'
         '  "$__nb_webui_python" -m playwright "$@"\n'
         "}\n"
+        "stty echo 2>/dev/null || true\n"
+        "clear\n"
     )
 
 
