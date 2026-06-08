@@ -38,10 +38,10 @@ const filters = reactive({
 const projectOptions = computed(() => nonebotStore.getExtendedBotsList())
 
 const levelClass = (level: LogLevel) => {
-  if (level === 'DEBUG') return 'text-info'
-  if (level === 'INFO') return 'text-success'
-  if (level === 'WARNING') return 'text-warning'
-  return 'text-error'
+  if (level === 'DEBUG') return 'text-sky-300'
+  if (level === 'INFO') return 'text-emerald-300'
+  if (level === 'WARNING') return 'text-amber-300'
+  return 'text-rose-300'
 }
 
 const syncProjectName = () => {
@@ -158,136 +158,110 @@ void loadSettings().then(refreshLogs)
 
 <template>
   <div class="nb-page">
-    <section class="nb-page-heading">
-      <div>
-        <div class="nb-kicker">
-          <span class="material-symbols-outlined text-base text-primary">article</span>
-          Log Center
+    <section class="nb-panel-surface rounded-[1.5rem] p-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="mr-auto min-w-[9rem]">
+          <div class="text-lg font-bold leading-tight">全局日志</div>
+          <div class="text-xs opacity-60">{{ entries.length }} 条</div>
         </div>
-        <h2 class="mt-3 text-2xl font-bold tracking-tight md:text-3xl">全局日志</h2>
-        <div class="mt-2 text-sm opacity-70">
-          这里可以查看 WebUI 操作日志和实例运行日志。日志按天分文件存储，支持按等级、日期、实例和关键字过滤。
-        </div>
+
+        <label class="form-control w-36">
+          <select v-model="filters.kind" class="select select-bordered select-sm">
+            <option value="webui">WebUI 日志</option>
+            <option value="instance">实例日志</option>
+          </select>
+        </label>
+
+        <label v-if="filters.kind === 'instance'" class="form-control w-40">
+          <select v-model="filters.project_id" class="select select-bordered select-sm">
+            <option value="">请选择实例</option>
+            <option v-for="project in projectOptions" :key="project.project_id" :value="project.project_id">
+              {{ project.project_name }}
+            </option>
+          </select>
+        </label>
+
+        <label class="form-control w-28">
+          <select v-model="filters.level" class="select select-bordered select-sm">
+            <option v-for="level in settings.available_levels" :key="level" :value="level">
+              {{ level }}
+            </option>
+          </select>
+        </label>
+
+        <label class="form-control w-36">
+          <select v-model="filters.date" class="select select-bordered select-sm">
+            <option value="">请选择日期</option>
+            <option v-for="date in dates" :key="date" :value="date">
+              {{ date }}
+            </option>
+          </select>
+        </label>
+
+        <label class="form-control min-w-[14rem] flex-1">
+          <input v-model="filters.search" class="input input-bordered input-sm" placeholder="搜索消息、详情或来源" />
+        </label>
+
+        <details class="dropdown dropdown-end">
+          <summary class="btn btn-outline btn-primary btn-sm">设置</summary>
+          <div class="dropdown-content z-30 mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 shadow-xl">
+            <div class="mb-3 text-sm font-semibold">日志设置</div>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="form-control">
+                <div class="label py-1"><span class="label-text text-xs">默认等级</span></div>
+                <select v-model="settings.min_level" class="select select-bordered select-sm">
+                  <option v-for="level in settings.available_levels" :key="level" :value="level">
+                    {{ level }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="form-control">
+                <div class="label py-1"><span class="label-text text-xs">保留天数</span></div>
+                <input
+                  v-model.number="settings.retention_days"
+                  type="number"
+                  min="1"
+                  max="180"
+                  class="input input-bordered input-sm font-mono"
+                />
+              </label>
+            </div>
+            <button class="btn btn-primary btn-sm mt-4 w-full text-base-100" :disabled="savingSettings || loadingSettings" @click="saveSettings">
+              {{ savingSettings ? '保存中...' : '保存设置' }}
+            </button>
+          </div>
+        </details>
+
+        <button class="btn btn-outline btn-primary btn-sm" :disabled="loadingEntries" @click="refreshLogs">
+          {{ loadingEntries ? '刷新中...' : '刷新' }}
+        </button>
       </div>
-      <button class="btn btn-outline btn-primary" :disabled="loadingEntries" @click="refreshLogs">
-        {{ loadingEntries ? '刷新中...' : '刷新日志' }}
-      </button>
     </section>
 
-    <div class="grid grid-cols-1 xl:grid-cols-[1.2fr_1.4fr] gap-4 items-start">
-      <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
-        <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">日志设置</h3>
-          <button class="btn btn-primary text-base-100" :disabled="savingSettings || loadingSettings" @click="saveSettings">
-            {{ savingSettings ? '保存中...' : '保存设置' }}
-          </button>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">默认过滤等级</span></div>
-            <select v-model="settings.min_level" class="select select-bordered">
-              <option v-for="level in settings.available_levels" :key="level" :value="level">
-                {{ level }}
-              </option>
-            </select>
-          </label>
-
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">日志保留天数</span></div>
-            <input
-              v-model.number="settings.retention_days"
-              type="number"
-              min="1"
-              max="180"
-              class="input input-bordered font-mono"
-            />
-          </label>
-        </div>
-
-        <div class="text-sm opacity-70">
-          前端通知、备份测试结果、页面报错和实例运行输出都会写入日志。系统会按设置的保留天数定时清理旧日志。
-        </div>
-      </section>
-
-      <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
-        <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-semibold">查看筛选</h3>
-          <button class="btn btn-outline btn-primary" :disabled="loadingEntries" @click="refreshLogs">
-            {{ loadingEntries ? '刷新中...' : '刷新日志' }}
-          </button>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">日志来源</span></div>
-            <select v-model="filters.kind" class="select select-bordered">
-              <option value="webui">WebUI 日志</option>
-              <option value="instance">实例日志</option>
-            </select>
-          </label>
-
-          <label v-if="filters.kind === 'instance'" class="form-control">
-            <div class="label py-1"><span class="label-text">实例</span></div>
-            <select v-model="filters.project_id" class="select select-bordered">
-              <option value="">请选择实例</option>
-              <option v-for="project in projectOptions" :key="project.project_id" :value="project.project_id">
-                {{ project.project_name }}
-              </option>
-            </select>
-          </label>
-
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">等级</span></div>
-            <select v-model="filters.level" class="select select-bordered">
-              <option v-for="level in settings.available_levels" :key="level" :value="level">
-                {{ level }}
-              </option>
-            </select>
-          </label>
-
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">日期</span></div>
-            <select v-model="filters.date" class="select select-bordered">
-              <option value="">请选择日期</option>
-              <option v-for="date in dates" :key="date" :value="date">
-                {{ date }}
-              </option>
-            </select>
-          </label>
-
-          <label class="form-control md:col-span-2 xl:col-span-1">
-            <div class="label py-1"><span class="label-text">关键字</span></div>
-            <input v-model="filters.search" class="input input-bordered" placeholder="搜索消息、详情或来源" />
-          </label>
-        </div>
-      </section>
-    </div>
-
-    <section class="nb-panel-surface rounded-[1.75rem] p-5 flex flex-col gap-4">
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-lg font-semibold">日志内容</h3>
-        <span class="badge badge-outline">{{ entries.length }} 条</span>
-      </div>
+    <section class="nb-panel-surface rounded-[1.5rem] p-3 flex flex-col gap-2">
 
       <div v-if="!filters.date" class="nb-empty-state text-sm opacity-70">请先选择一个日志日期。</div>
       <div v-else-if="!entries.length" class="nb-empty-state text-sm opacity-70">当前筛选条件下暂无日志。</div>
 
       <div
         v-else
-        class="nb-code-surface px-4 py-3 h-[65vh] overflow-auto font-mono text-xs leading-6"
+        class="global-log-console h-[calc(100vh-15rem)] min-h-[32rem] overflow-auto rounded-[22px] border border-slate-900/75 bg-slate-950 px-4 py-3 font-mono text-[13px] leading-6 text-slate-100 shadow-inner"
       >
         <div
           v-for="item in entries"
           :key="`${item.timestamp}-${item.source}-${item.message}`"
-          class="whitespace-pre-wrap break-all border-b border-base-content/5 py-1 last:border-b-0"
+          class="grid grid-cols-1 gap-x-3 border-b border-white/5 py-1.5 last:border-b-0 xl:grid-cols-[13.5rem_4.5rem_14rem_minmax(0,1fr)]"
         >
-          <span class="text-base-content/50">{{ item.timestamp }}</span>
-          <span class="mx-2" :class="levelClass(item.level)">[{{ item.level }}]</span>
-          <span class="text-base-content/60">{{ item.project_name ? `${item.source}/${item.project_name}` : item.source }}</span>
-          <span class="mx-2 text-base-content/30">|</span>
-          <span :class="levelClass(item.level)">{{ item.message }}</span>
-          <span v-if="item.detail" class="text-base-content/60"> | {{ item.detail }}</span>
+          <span class="text-slate-400">{{ item.timestamp }}</span>
+          <span class="font-semibold leading-6" :class="levelClass(item.level)">{{ item.level }}</span>
+          <span class="min-w-0 break-all text-slate-300">
+            {{ item.project_name ? `${item.source}/${item.project_name}` : item.source }}
+          </span>
+          <span class="min-w-0 break-all text-slate-100">
+            <span :class="levelClass(item.level)">{{ item.message }}</span>
+            <span v-if="item.detail" class="text-slate-300"> | {{ item.detail }}</span>
+          </span>
         </div>
       </div>
     </section>

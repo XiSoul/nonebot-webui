@@ -313,7 +313,7 @@ const loadRuntimeHistory = async (logId?: string) => {
 
   const { data, error } = await ProcessService.getLogHistoryV1ProcessLogHistoryGet({
     query: {
-      log_count: 300,
+      log_count: '300',
       log_id: target
     }
   })

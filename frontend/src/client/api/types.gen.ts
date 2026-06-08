@@ -27,6 +27,130 @@ export type AddProjectData = {
   builtin_plugins?: Array<string>
 }
 
+export type AutoStartProjectData = {
+  project_id: string
+  auto_start: boolean
+}
+
+export type BackupArchiveResponse = {
+  source: string
+  key?: string
+  name: string
+  size?: number
+  created_at?: string
+}
+
+export type BackupConnectivityRequest = {
+  webdav_url?: string
+  webdav_username?: string
+  webdav_password?: string
+  webdav_base_path?: string
+  s3_endpoint?: string
+  s3_region?: string
+  s3_bucket?: string
+  s3_access_key?: string
+  s3_secret_key?: string
+  s3_prefix?: string
+  s3_force_path_style?: boolean
+  archive_password?: string
+  auto_backup_enabled?: boolean
+  auto_backup_interval_hours?: number
+  keep_count?: number
+  include_logs?: boolean
+  log_project_ids?: Array<string>
+  source: 'webdav' | 's3'
+}
+
+export type source = 'webdav' | 's3'
+
+export type BackupConnectivityResponse = {
+  ok?: boolean
+  source: 'webdav' | 's3'
+  message?: string
+  detail?: string
+}
+
+export type BackupRemoteItem = {
+  source: 'webdav' | 's3'
+  key: string
+  name: string
+  size?: number
+  last_modified?: string
+}
+
+export type BackupRemoteListResponse = {
+  source: 'webdav' | 's3'
+  items: Array<BackupRemoteItem>
+}
+
+export type BackupRestoreAsNewRemoteRequest = {
+  source: 'webdav' | 's3'
+  key: string
+  password?: string
+}
+
+export type BackupRestoreAsNewResponse = {
+  project_id: string
+  project_name: string
+  project_dir: string
+  project_id_reassigned?: boolean
+  message?: string
+}
+
+export type BackupRestoreRemoteRequest = {
+  source: 'webdav' | 's3'
+  key: string
+  password?: string
+}
+
+export type BackupRestoreResponse = {
+  restarted?: boolean
+  message?: string
+}
+
+export type BackupSettingsResponse = {
+  webdav_url?: string
+  webdav_username?: string
+  webdav_password?: string
+  webdav_base_path?: string
+  webdav_configured?: boolean
+  s3_endpoint?: string
+  s3_region?: string
+  s3_bucket?: string
+  s3_access_key?: string
+  s3_secret_key?: string
+  s3_prefix?: string
+  s3_force_path_style?: boolean
+  s3_configured?: boolean
+  archive_password?: string
+  archive_password_configured?: boolean
+  auto_backup_enabled?: boolean
+  auto_backup_interval_hours?: number
+  keep_count?: number
+  include_logs?: boolean
+  log_project_ids?: Array<string>
+}
+
+export type BackupSettingsUpdateRequest = {
+  webdav_url?: string
+  webdav_username?: string
+  webdav_password?: string
+  webdav_base_path?: string
+  s3_endpoint?: string
+  s3_region?: string
+  s3_bucket?: string
+  s3_access_key?: string
+  s3_secret_key?: string
+  s3_prefix?: string
+  s3_force_path_style?: boolean
+  archive_password?: string
+  auto_backup_enabled?: boolean
+  auto_backup_interval_hours?: number
+  keep_count?: number
+  include_logs?: boolean
+  log_project_ids?: Array<string>
+}
+
 export type Body_search_nonebot_store_item_v1_store_nonebot_search_post = {
   data: SearchRequest
 }
@@ -35,6 +159,175 @@ export type Body_search_nonebot_store_item_v1_store_nonebot_search_post = {
  * An enumeration.
  */
 export type ConfigType = 'project' | 'toml'
+
+export type ContainerRuntimeConnectivityItem = {
+  name: string
+  target: string
+  ok: boolean
+  skipped?: boolean
+  status_code?: number
+  elapsed_ms?: number
+  error?: string
+}
+
+export type ContainerRuntimeConnectivityRequest = {
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+  debian_mirror?: string
+  pip_index_url?: string
+  pip_extra_index_url?: string
+  pip_trusted_host?: string
+  github_proxy_base_url?: string
+  bot_http_proxy?: string
+  bot_https_proxy?: string
+  bot_all_proxy?: string
+  bot_no_proxy?: string
+  bot_proxy_protocol?: string
+  bot_proxy_host?: string
+  bot_proxy_port?: string
+  bot_proxy_username?: string
+  bot_proxy_password?: string
+  bot_proxy_apply_target?: string
+  bot_proxy_instances?: string
+  mode?: string
+}
+
+export type ContainerRuntimeConnectivityResponse = {
+  ok: boolean
+  results: Array<ContainerRuntimeConnectivityItem>
+}
+
+export type ContainerRuntimePresetBenchmarkItem = {
+  preset_id: string
+  preset_name: string
+  ok: boolean
+  score_ms?: number
+  debian_elapsed_ms?: number
+  pip_elapsed_ms?: number
+  error?: string
+}
+
+export type ContainerRuntimePresetBenchmarkRequest = {
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+}
+
+export type ContainerRuntimePresetBenchmarkResponse = {
+  results: Array<ContainerRuntimePresetBenchmarkItem>
+}
+
+export type ContainerRuntimeProfileApplyRequest = {
+  name: string
+}
+
+export type ContainerRuntimeProfileItem = {
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+  debian_mirror?: string
+  pip_index_url?: string
+  pip_extra_index_url?: string
+  pip_trusted_host?: string
+  github_proxy_base_url?: string
+  bot_http_proxy?: string
+  bot_https_proxy?: string
+  bot_all_proxy?: string
+  bot_no_proxy?: string
+  bot_proxy_protocol?: string
+  bot_proxy_host?: string
+  bot_proxy_port?: string
+  bot_proxy_username?: string
+  bot_proxy_password?: string
+  bot_proxy_apply_target?: string
+  bot_proxy_instances?: string
+  name: string
+}
+
+export type ContainerRuntimeProfileListResponse = {
+  profiles: Array<ContainerRuntimeProfileItem>
+}
+
+export type ContainerRuntimeProfileSaveRequest = {
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+  debian_mirror?: string
+  pip_index_url?: string
+  pip_extra_index_url?: string
+  pip_trusted_host?: string
+  github_proxy_base_url?: string
+  bot_http_proxy?: string
+  bot_https_proxy?: string
+  bot_all_proxy?: string
+  bot_no_proxy?: string
+  bot_proxy_protocol?: string
+  bot_proxy_host?: string
+  bot_proxy_port?: string
+  bot_proxy_username?: string
+  bot_proxy_password?: string
+  bot_proxy_apply_target?: string
+  bot_proxy_instances?: string
+  name: string
+}
+
+export type ContainerRuntimeSettingsResponse = {
+  is_docker: boolean
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+  debian_mirror?: string
+  pip_index_url?: string
+  pip_extra_index_url?: string
+  pip_trusted_host?: string
+  github_proxy_base_url?: string
+  bot_http_proxy?: string
+  bot_https_proxy?: string
+  bot_all_proxy?: string
+  bot_no_proxy?: string
+  bot_proxy_protocol?: string
+  bot_proxy_host?: string
+  bot_proxy_port?: string
+  bot_proxy_username?: string
+  bot_proxy_password?: string
+  bot_proxy_apply_target?: string
+  bot_proxy_instances?: string
+}
+
+export type ContainerRuntimeSettingsUpdate = {
+  proxy_url?: string
+  http_proxy?: string
+  https_proxy?: string
+  all_proxy?: string
+  no_proxy?: string
+  debian_mirror?: string
+  pip_index_url?: string
+  pip_extra_index_url?: string
+  pip_trusted_host?: string
+  github_proxy_base_url?: string
+  bot_http_proxy?: string
+  bot_https_proxy?: string
+  bot_all_proxy?: string
+  bot_no_proxy?: string
+  bot_proxy_protocol?: string
+  bot_proxy_host?: string
+  bot_proxy_port?: string
+  bot_proxy_username?: string
+  bot_proxy_password?: string
+  bot_proxy_apply_target?: string
+  bot_proxy_instances?: string
+}
 
 export type CreateProjectData = {
   is_bootstrap: boolean
@@ -69,10 +362,120 @@ export type FileInfo = {
   path: string
   modified_time: string
   absolute_path: string
+  size?: number
+}
+
+export type FileManagerContentResponse = {
+  scope: 'mapped' | 'installed'
+  root_path?: string
+  path: string
+  content: string
+  encoding?: string
+  size?: number
+}
+
+export type scope = 'mapped' | 'installed'
+
+export type FileManagerCreateRequest = {
+  project_id: string
+  scope: 'mapped' | 'installed'
+  path?: string
+  name: string
+  is_dir: boolean
+}
+
+export type FileManagerDeleteRequest = {
+  project_id: string
+  scope: 'mapped' | 'installed'
+  path: string
+}
+
+export type FileManagerListResponse = {
+  scope: 'mapped' | 'installed'
+  root_path?: string
+  current_path?: string
+  available?: boolean
+  detail?: string
+  items: Array<FileInfo>
+}
+
+export type FileManagerRootItem = {
+  scope: 'mapped' | 'installed'
+  label: string
+  description?: string
+  root_path?: string
+  available?: boolean
+  detail?: string
+}
+
+export type FileManagerRootsResponse = {
+  project_id: string
+  project_name?: string
+  roots: Array<FileManagerRootItem>
+}
+
+export type FileManagerWriteRequest = {
+  project_id: string
+  scope: 'mapped' | 'installed'
+  path: string
+  content?: string
+  encoding?: string
 }
 
 export type FileResponse = {
   detail: Array<FileInfo>
+}
+
+export type GenericResponse_BackupArchiveResponse_ = {
+  detail: BackupArchiveResponse
+}
+
+export type GenericResponse_BackupConnectivityResponse_ = {
+  detail: BackupConnectivityResponse
+}
+
+export type GenericResponse_BackupRemoteListResponse_ = {
+  detail: BackupRemoteListResponse
+}
+
+export type GenericResponse_BackupRestoreAsNewResponse_ = {
+  detail: BackupRestoreAsNewResponse
+}
+
+export type GenericResponse_BackupRestoreResponse_ = {
+  detail: BackupRestoreResponse
+}
+
+export type GenericResponse_BackupSettingsResponse_ = {
+  detail: BackupSettingsResponse
+}
+
+export type GenericResponse_ContainerRuntimeConnectivityResponse_ = {
+  detail: ContainerRuntimeConnectivityResponse
+}
+
+export type GenericResponse_ContainerRuntimePresetBenchmarkResponse_ = {
+  detail: ContainerRuntimePresetBenchmarkResponse
+}
+
+export type GenericResponse_ContainerRuntimeProfileListResponse_ = {
+  detail: ContainerRuntimeProfileListResponse
+}
+
+export type GenericResponse_ContainerRuntimeSettingsResponse_ = {
+  detail: ContainerRuntimeSettingsResponse
+}
+
+export type GenericResponse_GlobalLogCatalogResponse_ = {
+  detail: GlobalLogCatalogResponse
+}
+
+export type GenericResponse_GlobalLogEntriesResponse_ = {
+  detail: GlobalLogEntriesResponse
+}
+
+export type GenericResponse_GlobalLogSettingsResponse_ = {
+  detail: GlobalLogSettingsResponse
 }
 
 export type GenericResponse_List_nb_cli_plugin_webui_app_handlers_process_schemas_ProcessLog__ = {
@@ -87,6 +490,10 @@ export type GenericResponse_List_nb_cli_plugin_webui_app_models_base_Plugin__ = 
   detail: Array<nb_cli_plugin_webui__app__models__base__Plugin>
 }
 
+export type GenericResponse_List_nb_cli_plugin_webui_app_process_schemas_TerminalSessionInfo__ = {
+  detail: Array<TerminalSessionInfo>
+}
+
 export type GenericResponse_List_str__ = {
   detail: Array<string>
 }
@@ -99,12 +506,72 @@ export type GenericResponse_ProjectTomlDetail_ = {
   detail: ProjectTomlDetail
 }
 
+export type GenericResponse_SecuritySettingsResponse_ = {
+  detail: SecuritySettingsResponse
+}
+
+export type GenericResponse_SecuritySettingsUpdateResponse_ = {
+  detail: SecuritySettingsUpdateResponse
+}
+
+export type GenericResponse_TerminalSessionInfo_ = {
+  detail: TerminalSessionInfo
+}
+
+export type GenericResponse_VersionInfoResponse_ = {
+  detail: VersionInfoResponse
+}
+
 export type GenericResponse_int_ = {
   detail: number
 }
 
 export type GenericResponse_str_ = {
   detail: string
+}
+
+export type GlobalLogCatalogResponse = {
+  kind: 'webui' | 'instance'
+  dates?: Array<string>
+}
+
+export type kind = 'webui' | 'instance'
+
+export type GlobalLogEntriesResponse = {
+  kind: 'webui' | 'instance'
+  date?: string
+  total?: number
+  items?: Array<GlobalLogEntry>
+}
+
+export type GlobalLogEntry = {
+  timestamp?: string
+  level?: string
+  source?: string
+  message?: string
+  detail?: string
+  project_id?: string
+  project_name?: string
+}
+
+export type GlobalLogEventRequest = {
+  level?: LogLevels
+  message: string
+  detail?: string
+  source?: string
+  project_id?: string
+  project_name?: string
+}
+
+export type GlobalLogSettingsResponse = {
+  min_level?: LogLevels
+  retention_days?: number
+  available_levels?: Array<string>
+}
+
+export type GlobalLogSettingsUpdateRequest = {
+  min_level?: LogLevels
+  retention_days?: number
 }
 
 export type HTTPValidationError = {
@@ -125,7 +592,12 @@ export type ListProjectResponse = {
 /**
  * An enumeration.
  */
-export type LogLevel = 'STDOUT' | 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG'
+export type LogLevel = '' | 'STDOUT' | 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG'
+
+/**
+ * An enumeration.
+ */
+export type LogLevels = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL'
 
 export type LoginRequest = {
   token: string
@@ -188,11 +660,62 @@ export type NoneBotProjectMeta = {
   builtin_plugins: Array<string>
   is_running?: boolean
   runtime_state?: string
+  /**
+   * Start this project automatically when WebUI starts.
+   */
+  auto_start?: boolean
   startup_duration_seconds?: number
+  /**
+   * Configured PORT from .env, 0 if unset.
+   */
   configured_port?: number
   use_env?: string
   use_run_script?: boolean
   run_script_name?: string
+  /**
+   * Use global bot proxy from system settings.
+   */
+  bot_use_global_proxy?: boolean
+  /**
+   * Bot HTTP proxy URL.
+   */
+  bot_http_proxy?: string
+  /**
+   * Bot HTTPS proxy URL.
+   */
+  bot_https_proxy?: string
+  /**
+   * Bot ALL_PROXY URL.
+   */
+  bot_all_proxy?: string
+  /**
+   * Bot NO_PROXY values.
+   */
+  bot_no_proxy?: string
+  /**
+   * Bot proxy builder protocol.
+   */
+  bot_proxy_protocol?: string
+  /**
+   * Bot proxy host.
+   */
+  bot_proxy_host?: string
+  /**
+   * Bot proxy port.
+   */
+  bot_proxy_port?: string
+  /**
+   * Bot proxy username.
+   */
+  bot_proxy_username?: string
+  /**
+   * Bot proxy password.
+   */
+  bot_proxy_password?: string
+  /**
+   * Bot proxy apply target.
+   */
+  bot_proxy_apply_target?: string
 }
 
 /**
@@ -209,7 +732,7 @@ export type ProcessLog = {
 
 export type ProjectTomlDetail = {
   project_name: string
-  resolved_project_dir: string
+  resolved_project_dir?: string
   adapters: Array<{
     [key: string]: string
   }>
@@ -225,6 +748,40 @@ export type SearchRequest = {
   content: string
 }
 
+export type SecuritySettingsResponse = {
+  is_docker: boolean
+  service_host?: string
+  service_port?: number
+  token_hint?: string
+  token_mode?: string
+  random_token_expire_hours?: number
+  session_token_expire_hours?: number
+  token_expires_at?: number
+}
+
+export type SecuritySettingsUpdateRequest = {
+  current_token?: string
+  new_token?: string
+  service_port?: number
+  token_mode?: string
+  random_token_expire_hours?: number
+  session_token_expire_hours?: number
+}
+
+export type SecuritySettingsUpdateResponse = {
+  token_changed?: boolean
+  reauth_required?: boolean
+  port_changed?: boolean
+  restart_scheduled?: boolean
+  service_port?: number
+  message?: string
+  token_mode?: string
+  random_token_expire_hours?: number
+  session_token_expire_hours?: number
+  token_expires_at?: number
+  login_token?: string
+}
+
 export type SimpleModel = {
   name: string
   is_dir: boolean
@@ -238,6 +795,19 @@ export type StoreListResponse = {
   total_item: number
 }
 
+export type TerminalSessionInfo = {
+  session_id: string
+  title: string
+  created_at: number
+  is_active: boolean
+  is_running: boolean
+  log_key: string
+}
+
+export type UpdateProjectDirData = {
+  project_dir: string
+}
+
 export type ValidationError = {
   loc: Array<string | number>
   msg: string
@@ -246,6 +816,29 @@ export type ValidationError = {
 
 export type VerifyRequest = {
   jwt_token: string
+}
+
+export type VersionInfoResponse = {
+  package_name: string
+  version: string
+  commit?: string
+  commit_short?: string
+  build_time?: string
+  repository: string
+  branch: string
+  latest?: VersionLatestInfo
+  update_available?: boolean
+  status: string
+  error?: string
+}
+
+export type VersionLatestInfo = {
+  version?: string
+  tag?: string
+  commit?: string
+  commit_short?: string
+  html_url?: string
+  checked_at?: string
 }
 
 export type nb_cli_plugin_webui__app__models__base__ModuleInfo = {
@@ -369,6 +962,109 @@ export type VerifyTokenV1AuthVerifyPostResponse = GenericResponse_str_
 
 export type VerifyTokenV1AuthVerifyPostError = HTTPValidationError
 
+export type GetAboutVersionV1AboutVersionGetResponse = GenericResponse_VersionInfoResponse_
+
+export type GetAboutVersionV1AboutVersionGetError = unknown
+
+export type GetBackupSettingsV1BackupSettingsGetResponse = GenericResponse_BackupSettingsResponse_
+
+export type GetBackupSettingsV1BackupSettingsGetError = unknown
+
+export type PutBackupSettingsV1BackupSettingsPutData = {
+  body: BackupSettingsUpdateRequest
+}
+
+export type PutBackupSettingsV1BackupSettingsPutResponse = GenericResponse_str_
+
+export type PutBackupSettingsV1BackupSettingsPutError = HTTPValidationError
+
+export type PostBackupTestV1BackupTestPostData = {
+  body: BackupConnectivityRequest
+}
+
+export type PostBackupTestV1BackupTestPostResponse = GenericResponse_BackupConnectivityResponse_
+
+export type PostBackupTestV1BackupTestPostError = HTTPValidationError
+
+export type GetBackupListV1BackupListGetData = {
+  query: {
+    source: 'webdav' | 's3'
+  }
+}
+
+export type GetBackupListV1BackupListGetResponse = GenericResponse_BackupRemoteListResponse_
+
+export type GetBackupListV1BackupListGetError = HTTPValidationError
+
+export type DownloadProjectBackupV1BackupDownloadPostData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type DownloadProjectBackupV1BackupDownloadPostResponse = unknown
+
+export type DownloadProjectBackupV1BackupDownloadPostError = HTTPValidationError
+
+export type UploadProjectBackupV1BackupUploadPostData = {
+  query: {
+    project_id: string
+    source: 'webdav' | 's3'
+  }
+}
+
+export type UploadProjectBackupV1BackupUploadPostResponse = GenericResponse_BackupArchiveResponse_
+
+export type UploadProjectBackupV1BackupUploadPostError = HTTPValidationError
+
+export type RestoreRemoteBackupV1BackupRestoreRemotePostData = {
+  body: BackupRestoreRemoteRequest
+  query: {
+    project_id: string
+  }
+}
+
+export type RestoreRemoteBackupV1BackupRestoreRemotePostResponse =
+  GenericResponse_BackupRestoreResponse_
+
+export type RestoreRemoteBackupV1BackupRestoreRemotePostError = HTTPValidationError
+
+export type RestoreLocalBackupV1BackupRestoreLocalPostData = {
+  headers?: {
+    'X-Backup-Filename'?: string
+    'X-Backup-Password'?: string
+  }
+  query: {
+    project_id: string
+  }
+}
+
+export type RestoreLocalBackupV1BackupRestoreLocalPostResponse =
+  GenericResponse_BackupRestoreResponse_
+
+export type RestoreLocalBackupV1BackupRestoreLocalPostError = HTTPValidationError
+
+export type RestoreRemoteBackupAsNewV1BackupRestoreAsNewRemotePostData = {
+  body: BackupRestoreAsNewRemoteRequest
+}
+
+export type RestoreRemoteBackupAsNewV1BackupRestoreAsNewRemotePostResponse =
+  GenericResponse_BackupRestoreAsNewResponse_
+
+export type RestoreRemoteBackupAsNewV1BackupRestoreAsNewRemotePostError = HTTPValidationError
+
+export type RestoreLocalBackupAsNewV1BackupRestoreAsNewLocalPostData = {
+  headers?: {
+    'X-Backup-Filename'?: string
+    'X-Backup-Password'?: string
+  }
+}
+
+export type RestoreLocalBackupAsNewV1BackupRestoreAsNewLocalPostResponse =
+  GenericResponse_BackupRestoreAsNewResponse_
+
+export type RestoreLocalBackupAsNewV1BackupRestoreAsNewLocalPostError = HTTPValidationError
+
 export type GetFileListV1FileListGetData = {
   query: {
     path: string
@@ -397,6 +1093,114 @@ export type DeleteFileV1FileDeleteDeleteResponse = FileResponse
 
 export type DeleteFileV1FileDeleteDeleteError = HTTPValidationError
 
+export type GetFileManagerRootsV1FileManagerRootsGetData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type GetFileManagerRootsV1FileManagerRootsGetResponse = FileManagerRootsResponse
+
+export type GetFileManagerRootsV1FileManagerRootsGetError = HTTPValidationError
+
+export type GetFileManagerListV1FileManagerListGetData = {
+  query: {
+    path?: string
+    project_id: string
+    scope: 'mapped' | 'installed'
+  }
+}
+
+export type GetFileManagerListV1FileManagerListGetResponse = FileManagerListResponse
+
+export type GetFileManagerListV1FileManagerListGetError = HTTPValidationError
+
+export type GetFileManagerContentV1FileManagerContentGetData = {
+  query: {
+    path: string
+    project_id: string
+    scope: 'mapped' | 'installed'
+  }
+}
+
+export type GetFileManagerContentV1FileManagerContentGetResponse = FileManagerContentResponse
+
+export type GetFileManagerContentV1FileManagerContentGetError = HTTPValidationError
+
+export type UpdateFileManagerContentV1FileManagerContentPutData = {
+  body: FileManagerWriteRequest
+}
+
+export type UpdateFileManagerContentV1FileManagerContentPutResponse = FileManagerContentResponse
+
+export type UpdateFileManagerContentV1FileManagerContentPutError = HTTPValidationError
+
+export type CreateFileManagerEntryV1FileManagerCreatePostData = {
+  body: FileManagerCreateRequest
+}
+
+export type CreateFileManagerEntryV1FileManagerCreatePostResponse = FileManagerListResponse
+
+export type CreateFileManagerEntryV1FileManagerCreatePostError = HTTPValidationError
+
+export type DeleteFileManagerEntryV1FileManagerDeleteDeleteData = {
+  body: FileManagerDeleteRequest
+}
+
+export type DeleteFileManagerEntryV1FileManagerDeleteDeleteResponse = FileManagerListResponse
+
+export type DeleteFileManagerEntryV1FileManagerDeleteDeleteError = HTTPValidationError
+
+export type GetGlobalLogSettingsV1LogCenterSettingsGetResponse =
+  GenericResponse_GlobalLogSettingsResponse_
+
+export type GetGlobalLogSettingsV1LogCenterSettingsGetError = unknown
+
+export type PutGlobalLogSettingsV1LogCenterSettingsPutData = {
+  body: GlobalLogSettingsUpdateRequest
+}
+
+export type PutGlobalLogSettingsV1LogCenterSettingsPutResponse = GenericResponse_str_
+
+export type PutGlobalLogSettingsV1LogCenterSettingsPutError = HTTPValidationError
+
+export type GetGlobalLogCatalogV1LogCenterCatalogGetData = {
+  query: {
+    kind: 'webui' | 'instance'
+    project_id?: string
+    project_name?: string
+  }
+}
+
+export type GetGlobalLogCatalogV1LogCenterCatalogGetResponse =
+  GenericResponse_GlobalLogCatalogResponse_
+
+export type GetGlobalLogCatalogV1LogCenterCatalogGetError = HTTPValidationError
+
+export type GetGlobalLogEntriesV1LogCenterEntriesGetData = {
+  query: {
+    date: string
+    kind: 'webui' | 'instance'
+    level?: string
+    project_id?: string
+    project_name?: string
+    search?: string
+  }
+}
+
+export type GetGlobalLogEntriesV1LogCenterEntriesGetResponse =
+  GenericResponse_GlobalLogEntriesResponse_
+
+export type GetGlobalLogEntriesV1LogCenterEntriesGetError = HTTPValidationError
+
+export type PostGlobalLogEventV1LogCenterEventPostData = {
+  body: GlobalLogEventRequest
+}
+
+export type PostGlobalLogEventV1LogCenterEventPostResponse = GenericResponse_str_
+
+export type PostGlobalLogEventV1LogCenterEventPostError = HTTPValidationError
+
 export type InstallNonebotModuleV1StoreNonebotInstallPostData = {
   body:
     | nb_cli_plugin_webui__app__models__store__ModuleInfo
@@ -424,6 +1228,19 @@ export type UninstallNonebotModuleV1StoreNonebotUninstallPostData = {
 export type UninstallNonebotModuleV1StoreNonebotUninstallPostResponse = GenericResponse_str_
 
 export type UninstallNonebotModuleV1StoreNonebotUninstallPostError = HTTPValidationError
+
+export type UpdateNonebotPluginV1StoreNonebotUpdatePluginPostData = {
+  body: nb_cli_plugin_webui__app__models__store__Plugin
+  query: {
+    env: string
+    project_id: string
+    target_version?: string
+  }
+}
+
+export type UpdateNonebotPluginV1StoreNonebotUpdatePluginPostResponse = GenericResponse_str_
+
+export type UpdateNonebotPluginV1StoreNonebotUpdatePluginPostError = HTTPValidationError
 
 export type GetNonebotStoreItemsV1StoreNonebotListGetData = {
   query: {
@@ -470,16 +1287,6 @@ export type StopProcessV1ProcessStopPostResponse = GenericResponse_str_
 
 export type StopProcessV1ProcessStopPostError = HTTPValidationError
 
-export type InterruptProcessV1ProcessInterruptPostData = {
-  query: {
-    project_id: string
-  }
-}
-
-export type InterruptProcessV1ProcessInterruptPostResponse = GenericResponse_str_
-
-export type InterruptProcessV1ProcessInterruptPostError = HTTPValidationError
-
 export type WriteToProcessV1ProcessWritePostData = {
   query: {
     content: string
@@ -491,9 +1298,119 @@ export type WriteToProcessV1ProcessWritePostResponse = GenericResponse_int_
 
 export type WriteToProcessV1ProcessWritePostError = HTTPValidationError
 
+export type InterruptProcessV1ProcessInterruptPostData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type InterruptProcessV1ProcessInterruptPostResponse = GenericResponse_str_
+
+export type InterruptProcessV1ProcessInterruptPostError = HTTPValidationError
+
+export type OpenTerminalV1ProcessTerminalOpenPostData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type OpenTerminalV1ProcessTerminalOpenPostResponse = GenericResponse_str_
+
+export type OpenTerminalV1ProcessTerminalOpenPostError = HTTPValidationError
+
+export type GetTerminalSessionsV1ProcessTerminalSessionsGetData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type GetTerminalSessionsV1ProcessTerminalSessionsGetResponse =
+  GenericResponse_List_nb_cli_plugin_webui_app_process_schemas_TerminalSessionInfo__
+
+export type GetTerminalSessionsV1ProcessTerminalSessionsGetError = HTTPValidationError
+
+export type CreateTerminalSessionV1ProcessTerminalSessionCreatePostData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type CreateTerminalSessionV1ProcessTerminalSessionCreatePostResponse =
+  GenericResponse_TerminalSessionInfo_
+
+export type CreateTerminalSessionV1ProcessTerminalSessionCreatePostError = HTTPValidationError
+
+export type SwitchTerminalSessionV1ProcessTerminalSessionSwitchPostData = {
+  query: {
+    project_id: string
+    session_id: string
+  }
+}
+
+export type SwitchTerminalSessionV1ProcessTerminalSessionSwitchPostResponse = GenericResponse_str_
+
+export type SwitchTerminalSessionV1ProcessTerminalSessionSwitchPostError = HTTPValidationError
+
+export type DeleteTerminalSessionV1ProcessTerminalSessionDeleteDeleteData = {
+  query: {
+    project_id: string
+    session_id: string
+  }
+}
+
+export type DeleteTerminalSessionV1ProcessTerminalSessionDeleteDeleteResponse = GenericResponse_str_
+
+export type DeleteTerminalSessionV1ProcessTerminalSessionDeleteDeleteError = HTTPValidationError
+
+export type GetTerminalLogKeyV1ProcessTerminalLogKeyGetData = {
+  query: {
+    project_id: string
+    session_id?: string
+  }
+}
+
+export type GetTerminalLogKeyV1ProcessTerminalLogKeyGetResponse = GenericResponse_str_
+
+export type GetTerminalLogKeyV1ProcessTerminalLogKeyGetError = HTTPValidationError
+
+export type ResizeTerminalV1ProcessTerminalResizePostData = {
+  query: {
+    cols: number
+    project_id: string
+    rows: number
+    session_id?: string
+  }
+}
+
+export type ResizeTerminalV1ProcessTerminalResizePostResponse = GenericResponse_str_
+
+export type ResizeTerminalV1ProcessTerminalResizePostError = HTTPValidationError
+
+export type GetRuntimeLogKeyV1ProcessRuntimeLogKeyGetData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type GetRuntimeLogKeyV1ProcessRuntimeLogKeyGetResponse = GenericResponse_str_
+
+export type GetRuntimeLogKeyV1ProcessRuntimeLogKeyGetError = HTTPValidationError
+
+export type ExecuteCommandV1ProcessExecutePostData = {
+  query: {
+    command: string
+    project_id: string
+    session_id?: string
+  }
+}
+
+export type ExecuteCommandV1ProcessExecutePostResponse = GenericResponse_str_
+
+export type ExecuteCommandV1ProcessExecutePostError = HTTPValidationError
+
 export type GetLogHistoryV1ProcessLogHistoryGetData = {
   query: {
-    log_count: number
+    log_count?: string
     log_id: string
   }
 }
@@ -602,9 +1519,12 @@ export type GetDotenvFileV1ProjectConfigDotenvGetResponse = GenericResponse_str_
 export type GetDotenvFileV1ProjectConfigDotenvGetError = HTTPValidationError
 
 export type UpdateDotenvFileV1ProjectConfigDotenvPutData = {
+  body?: {
+    [key: string]: string
+  }
   query: {
-    data: string
-    env: string
+    data?: string
+    env?: string
     project_id: string
   }
 }
@@ -612,6 +1532,30 @@ export type UpdateDotenvFileV1ProjectConfigDotenvPutData = {
 export type UpdateDotenvFileV1ProjectConfigDotenvPutResponse = GenericResponse_str_
 
 export type UpdateDotenvFileV1ProjectConfigDotenvPutError = HTTPValidationError
+
+export type GetPyprojectFileV1ProjectConfigPyprojectGetData = {
+  query: {
+    project_id: string
+  }
+}
+
+export type GetPyprojectFileV1ProjectConfigPyprojectGetResponse = GenericResponse_str_
+
+export type GetPyprojectFileV1ProjectConfigPyprojectGetError = HTTPValidationError
+
+export type UpdatePyprojectFileV1ProjectConfigPyprojectPutData = {
+  body?: {
+    [key: string]: string
+  }
+  query: {
+    data?: string
+    project_id: string
+  }
+}
+
+export type UpdatePyprojectFileV1ProjectConfigPyprojectPutResponse = GenericResponse_str_
+
+export type UpdatePyprojectFileV1ProjectConfigPyprojectPutError = HTTPValidationError
 
 export type CreateProjectV1ProjectCreatePostData = {
   body: CreateProjectData
@@ -653,21 +1597,6 @@ export type DeleteProjectV1ProjectDeleteDeleteError = HTTPValidationError
 export type ListProjectV1ProjectListGetResponse = ListProjectResponse
 
 export type ListProjectV1ProjectListGetError = unknown
-
-export type UpdateProjectDirData = {
-  project_dir: string
-}
-
-export type UpdateProjectDirV1ProjectUpdateDirPostData = {
-  body: UpdateProjectDirData
-  query?: {
-    project_id?: string
-  }
-}
-
-export type UpdateProjectDirV1ProjectUpdateDirPostResponse = GenericResponse_str_
-
-export type UpdateProjectDirV1ProjectUpdateDirPostError = HTTPValidationError
 
 export type CheckProjectTomlV1ProjectCheckTomlPostData = {
   query: {
@@ -711,3 +1640,104 @@ export type GetDriversV1ProjectDriversGetResponse =
   GenericResponse_List_nb_cli_plugin_webui_app_models_base_ModuleInfo__
 
 export type GetDriversV1ProjectDriversGetError = HTTPValidationError
+
+export type UpdateProjectAutoStartV1ProjectAutoStartUsePostData = {
+  body: AutoStartProjectData
+}
+
+export type UpdateProjectAutoStartV1ProjectAutoStartUsePostResponse =
+  GenericResponse_NoneBotProjectMeta_
+
+export type UpdateProjectAutoStartV1ProjectAutoStartUsePostError = HTTPValidationError
+
+export type UpdateProjectDirV1ProjectUpdateDirPostData = {
+  body: UpdateProjectDirData
+  query: {
+    project_id: string
+  }
+}
+
+export type UpdateProjectDirV1ProjectUpdateDirPostResponse = GenericResponse_str_
+
+export type UpdateProjectDirV1ProjectUpdateDirPostError = HTTPValidationError
+
+export type GetSecuritySettingsV1SystemSecurityGetResponse =
+  GenericResponse_SecuritySettingsResponse_
+
+export type GetSecuritySettingsV1SystemSecurityGetError = unknown
+
+export type UpdateSecuritySettingsV1SystemSecurityPutData = {
+  body: SecuritySettingsUpdateRequest
+}
+
+export type UpdateSecuritySettingsV1SystemSecurityPutResponse =
+  GenericResponse_SecuritySettingsUpdateResponse_
+
+export type UpdateSecuritySettingsV1SystemSecurityPutError = HTTPValidationError
+
+export type GetContainerRuntimeSettingsV1SystemContainerRuntimeGetResponse =
+  GenericResponse_ContainerRuntimeSettingsResponse_
+
+export type GetContainerRuntimeSettingsV1SystemContainerRuntimeGetError = unknown
+
+export type UpdateContainerRuntimeSettingsV1SystemContainerRuntimePutData = {
+  body: ContainerRuntimeSettingsUpdate
+}
+
+export type UpdateContainerRuntimeSettingsV1SystemContainerRuntimePutResponse = GenericResponse_str_
+
+export type UpdateContainerRuntimeSettingsV1SystemContainerRuntimePutError = HTTPValidationError
+
+export type TestRuntimeSettingsConnectivityV1SystemContainerRuntimeTestPostData = {
+  body: ContainerRuntimeConnectivityRequest
+}
+
+export type TestRuntimeSettingsConnectivityV1SystemContainerRuntimeTestPostResponse =
+  GenericResponse_ContainerRuntimeConnectivityResponse_
+
+export type TestRuntimeSettingsConnectivityV1SystemContainerRuntimeTestPostError =
+  HTTPValidationError
+
+export type BenchmarkRuntimePresetsV1SystemContainerRuntimePresetBenchmarkPostData = {
+  body: ContainerRuntimePresetBenchmarkRequest
+}
+
+export type BenchmarkRuntimePresetsV1SystemContainerRuntimePresetBenchmarkPostResponse =
+  GenericResponse_ContainerRuntimePresetBenchmarkResponse_
+
+export type BenchmarkRuntimePresetsV1SystemContainerRuntimePresetBenchmarkPostError =
+  HTTPValidationError
+
+export type ListRuntimeProfilesV1SystemContainerRuntimeProfileListGetResponse =
+  GenericResponse_ContainerRuntimeProfileListResponse_
+
+export type ListRuntimeProfilesV1SystemContainerRuntimeProfileListGetError = unknown
+
+export type SaveRuntimeProfileV1SystemContainerRuntimeProfileSavePostData = {
+  body: ContainerRuntimeProfileSaveRequest
+}
+
+export type SaveRuntimeProfileV1SystemContainerRuntimeProfileSavePostResponse = GenericResponse_str_
+
+export type SaveRuntimeProfileV1SystemContainerRuntimeProfileSavePostError = HTTPValidationError
+
+export type ApplyRuntimeProfileV1SystemContainerRuntimeProfileApplyPostData = {
+  body: ContainerRuntimeProfileApplyRequest
+}
+
+export type ApplyRuntimeProfileV1SystemContainerRuntimeProfileApplyPostResponse =
+  GenericResponse_str_
+
+export type ApplyRuntimeProfileV1SystemContainerRuntimeProfileApplyPostError = HTTPValidationError
+
+export type DeleteRuntimeProfileV1SystemContainerRuntimeProfileDeleteDeleteData = {
+  query?: {
+    name?: string
+  }
+}
+
+export type DeleteRuntimeProfileV1SystemContainerRuntimeProfileDeleteDeleteResponse =
+  GenericResponse_str_
+
+export type DeleteRuntimeProfileV1SystemContainerRuntimeProfileDeleteDeleteError =
+  HTTPValidationError

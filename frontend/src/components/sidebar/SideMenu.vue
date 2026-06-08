@@ -27,19 +27,18 @@ const recordView = (route: NavItem) => {
       Workspace
     </div>
 
-    <ul class="menu gap-1 rounded-box px-0">
+    <ul class="flex flex-col gap-1">
       <li v-for="route in mainRoutes" :key="route.name" @click="recordView(route)">
         <RouterLink
           :to="route.routeData.path"
-          class="group min-h-11 rounded-2xl transition duration-150 hover:bg-primary/10"
+          class="nb-sidebar-link group"
           :class="{
-            active: route.routeData.path === getCurrentRoute(),
-            'btn-block lg:btn-square flex items-center justify-start lg:justify-center':
-              customStore.menuMinify
+            'is-active': route.routeData.path === getCurrentRoute(),
+            'lg:justify-center lg:px-0': customStore.menuMinify
           }"
           @click="customStore.toggleMenuShow()"
         >
-          <span v-if="route.googleIcon" class="material-symbols-outlined text-[1.45rem]">
+          <span v-if="route.googleIcon" class="material-symbols-outlined shrink-0 text-[1.45rem]">
             {{ route.googleIcon }}
           </span>
           <span class="font-medium" :class="{ 'block lg:hidden': customStore.menuMinify }">
@@ -51,19 +50,18 @@ const recordView = (route: NavItem) => {
 
     <div class="mt-auto pt-4">
       <div class="mb-3 border-t border-base-content/10"></div>
-      <ul class="menu gap-1 rounded-box px-0">
+      <ul class="flex flex-col gap-1">
         <li v-for="route in footerRoutes" :key="route.name" @click="recordView(route)">
           <RouterLink
             :to="route.routeData.path"
-            class="min-h-11 rounded-2xl transition duration-150 hover:bg-primary/10"
+            class="nb-sidebar-link group"
             :class="{
-              active: route.routeData.path === getCurrentRoute(),
-              'btn-block lg:btn-square flex items-center justify-start lg:justify-center':
-                customStore.menuMinify
+              'is-active': route.routeData.path === getCurrentRoute(),
+              'lg:justify-center lg:px-0': customStore.menuMinify
             }"
             @click="customStore.toggleMenuShow()"
           >
-            <span v-if="route.googleIcon" class="material-symbols-outlined text-[1.45rem]">
+            <span v-if="route.googleIcon" class="material-symbols-outlined shrink-0 text-[1.45rem]">
               {{ route.googleIcon }}
             </span>
             <span class="font-medium" :class="{ 'block lg:hidden': customStore.menuMinify }">
@@ -85,14 +83,47 @@ const recordView = (route: NavItem) => {
     'opsz' 48;
 }
 
-.menu li > *:not(ul, .menu-title, details, .btn):active,
-.menu li > *:not(ul, .menu-title, details, .btn).active,
-.menu li > details > summary:active {
-  --tw-bg-opacity: 0.16;
+.nb-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid transparent;
+  border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
+  color: var(--fallback-bc, oklch(var(--bc) / 0.86));
+  line-height: 1.25rem;
+  text-decoration: none;
+  background-clip: border-box;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.nb-sidebar-link:hover {
+  background: oklch(var(--p) / 0.1);
+}
+
+.nb-sidebar-link:active,
+.nb-sidebar-link.is-active,
+.nb-sidebar-link.router-link-active,
+.nb-sidebar-link.router-link-exact-active {
+  border-left-color: rgb(234 83 83 / 0.9);
+  border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
+  color: var(--fallback-bc, oklch(var(--bc) / 0.94));
   background:
-    linear-gradient(135deg, rgb(234 83 83 / 0.18), rgb(99 102 241 / 0.1)),
-    var(--fallback-n, oklch(var(--p) / var(--tw-bg-opacity)));
-  color: var(--fallback-nc, oklch(var(--pc) / var(--tw-text-opacity)));
-  box-shadow: inset 3px 0 0 rgb(234 83 83 / 0.9);
+    linear-gradient(90deg, rgb(234 83 83 / 0.2) 0%, rgb(234 83 83 / 0.14) 45%, rgb(99 102 241 / 0.07) 100%),
+    oklch(var(--p) / 0.12);
+  box-shadow: none;
+}
+
+.nb-sidebar-link.is-active:hover,
+.nb-sidebar-link.router-link-active:hover,
+.nb-sidebar-link.router-link-exact-active:hover {
+  background:
+    linear-gradient(90deg, rgb(234 83 83 / 0.2) 0%, rgb(234 83 83 / 0.14) 45%, rgb(99 102 241 / 0.07) 100%),
+    oklch(var(--p) / 0.12);
 }
 </style>

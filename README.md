@@ -112,12 +112,14 @@ docker run -d \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=18080 \
+  -e WEBUI_DATA_DIR=/data \
+  -e WEBUI_CONFIG_DIR=/data \
+  -e WEBUI_CACHE_DIR=/data \
   -v /home/xisoul/nonebot-webui-data/projects:/projects \
   -v /home/xisoul/nonebot-webui-external-projects:/external-projects \
   # 挂载你本地的NoneBot项目目录到容器内，容器会自动扫描并添加所有项目
   -v /path/to/your/nonebot/projects:/opt/nonebot-projects \
-  -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
-  -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
+  -v /home/xisoul/nonebot-webui-data:/data \
   xisoul/nonebot-webui:latest
 ```
 
@@ -133,9 +135,10 @@ docker run -d \
 
 - `/projects` 给 WebUI 新建实例使用
 - `/external-projects` 给宿主机 / NAS 里已经存在的实例使用
-- `/app/config.json` 与 `/app/project.json` 会被程序写回，不能只读挂载
+- `/data` 给 WebUI 运行期状态使用，包括 `config.json`、`project.json`、缓存和日志等可变数据；生产环境只需要把宿主机数据目录挂载到 `/data`
+- 旧版本如果已经把 `/app/config.json` 或 `/app/project.json` 挂出来，新版本启动时会在 `/data` 还没有对应文件时自动兼容复制一次，避免已有登录凭证和实例列表丢失
 - 新版本镜像不再声明默认 Docker `VOLUME`，避免 NAS / Docker Desktop 自动带出误导性的默认挂载项
-- 如果 NAS 面板自动带出其它旧默认卷（例如 `/data`），建议手动删掉，再按上面这些路径重新配置
+- 如果 NAS 面板自动带出其它旧默认卷，建议只保留 `/data`、`/projects`、`/external-projects` 以及你额外挂载的实例目录
 
 仓库自带的 `docker-compose.yml` 现在也包含了 `watchtower` 自动更新方案：
 
@@ -225,7 +228,7 @@ docker logs nonebot-webui
 
 如果后面你在”安全设置”里改成随机 token 模式，新 token 也会继续写到容器日志里。
 
-永久 token 模式下，只要 `/app/config.json` 中的认证字段仍然完整，后续重启不会自动换 token。
+永久 token 模式下，只要 `/data/config.json` 中的认证字段仍然完整，后续重启不会自动换 token。
 如果配置文件损坏或字段缺失，程序现在会直接报错提示你修复配置，而不是静默重新生成一个新 token。
 
 ### 重置登录密码

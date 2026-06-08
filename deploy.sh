@@ -84,10 +84,12 @@ docker run -d \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=18080 \
+  -e WEBUI_DATA_DIR=/data \
+  -e WEBUI_CONFIG_DIR=/data \
+  -e WEBUI_CACHE_DIR=/data \
   -v /home/xisoul/nonebot-webui-data/projects:/projects \
   -v /home/xisoul/nonebot-webui-external-projects:/external-projects \
-  -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
-  -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
+  -v /home/xisoul/nonebot-webui-data:/data \
   $FULL_IMAGE
 
 # Health check

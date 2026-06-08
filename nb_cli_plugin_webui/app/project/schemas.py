@@ -40,5 +40,10 @@ class UpdateProjectDirData(BaseModel):
     project_dir: str
 
 
+class AutoStartProjectData(BaseModel):
+    project_id: str
+    auto_start: bool
+
+
 class ListProjectResponse(GenericResponse[Dict[str, NoneBotProjectMeta]]):
     pass

@@ -1,10 +1,41 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { getAuthToken } from '@/client/auth'
+import { generateURLForWebUI, getErrorMessage } from '@/client/utils'
+
 const repoUrl = 'https://github.com/XiSoul/nonebot-webui'
 const branchName = 'master'
 const usageDocUrl = `${repoUrl}/blob/${branchName}/docs/USAGE.md`
 const updateDocUrl = `${repoUrl}/blob/${branchName}/docs/UPDATE.md`
 const deployDocUrl = `${repoUrl}/blob/${branchName}/docs/DEPLOY.md`
 const qqGroup = '306146537'
+
+type LatestVersionInfo = {
+  version?: string | null
+  tag?: string | null
+  commit?: string | null
+  commit_short?: string | null
+  html_url?: string | null
+  checked_at?: string | null
+}
+
+type VersionInfo = {
+  package_name: string
+  version: string
+  commit?: string | null
+  commit_short?: string | null
+  build_time?: string | null
+  repository: string
+  branch: string
+  latest?: LatestVersionInfo | null
+  update_available?: boolean | null
+  status: string
+  error?: string | null
+}
+
+const versionInfo = ref<VersionInfo | null>(null)
+const loadingVersion = ref(false)
+const versionError = ref('')
 
 const features = [
   '面向 NoneBot 实例的创建、导入、运行、终端与文件管理',
@@ -48,6 +79,59 @@ const docs = [
     action: '查看部署文档'
   }
 ]
+
+const updateBadgeClass = computed(() => {
+  if (loadingVersion.value) return 'badge-info'
+  if (versionError.value || versionInfo.value?.status === 'error') return 'badge-warning'
+  if (versionInfo.value?.update_available === true) return 'badge-error'
+  if (versionInfo.value?.update_available === false) return 'badge-success'
+  return 'badge-ghost'
+})
+
+const updateStatusText = computed(() => {
+  if (loadingVersion.value) return '检测中'
+  if (versionError.value || versionInfo.value?.status === 'error') return '检测失败'
+  if (versionInfo.value?.update_available === true) return '发现新版本'
+  if (versionInfo.value?.update_available === false) return '已是最新'
+  return '未知'
+})
+
+const formatTime = (value?: string | null) => {
+  if (!value) return '不可用'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
+const displayValue = (value?: string | null) => value || '不可用'
+
+const loadVersionInfo = async () => {
+  loadingVersion.value = true
+  versionError.value = ''
+  try {
+    const token = getAuthToken()
+    const response = await fetch(generateURLForWebUI('/v1/about/version'), {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(getErrorMessage(payload, `HTTP ${response.status}`))
+    }
+    versionInfo.value = payload.detail
+    if (payload.detail?.error) {
+      versionError.value = payload.detail.error
+    }
+  } catch (error) {
+    versionError.value = getErrorMessage(error, '版本信息获取失败')
+  } finally {
+    loadingVersion.value = false
+  }
+}
+
+onMounted(() => {
+  loadVersionInfo()
+})
 </script>
 
 <template>
@@ -68,6 +152,79 @@ const docs = [
             运行控制、依赖安装、扩展管理、日志查看和 Docker 部署等高频场景。
           </p>
         </div>
+      </div>
+    </section>
+
+    <section class="nb-panel-surface rounded-[28px] border border-base-content/10 bg-base-200/80 p-6">
+      <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-primary">verified_versions</span>
+          <div>
+            <h2 class="text-xl font-semibold">版本信息</h2>
+            <p class="text-sm text-base-content/60">显示当前部署版本并检测 GitHub 最新版本/提交。</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="badge" :class="updateBadgeClass">{{ updateStatusText }}</span>
+          <button class="btn btn-sm btn-primary" :disabled="loadingVersion" @click="loadVersionInfo">
+            <span v-if="loadingVersion" class="loading loading-spinner loading-xs"></span>
+            重新检测
+          </button>
+        </div>
+      </div>
+
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/80 p-4">
+          <div class="text-xs uppercase tracking-wide text-base-content/50">当前版本</div>
+          <div class="mt-2 font-mono text-lg font-semibold">{{ displayValue(versionInfo?.version) }}</div>
+          <div class="mt-1 text-xs text-base-content/50">{{ displayValue(versionInfo?.package_name) }}</div>
+        </div>
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/80 p-4">
+          <div class="text-xs uppercase tracking-wide text-base-content/50">当前提交</div>
+          <div class="mt-2 font-mono text-lg font-semibold">{{ displayValue(versionInfo?.commit_short) }}</div>
+          <div class="mt-1 truncate text-xs text-base-content/50">{{ displayValue(versionInfo?.commit) }}</div>
+        </div>
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/80 p-4">
+          <div class="text-xs uppercase tracking-wide text-base-content/50">最新版本</div>
+          <div class="mt-2 font-mono text-lg font-semibold">
+            {{ displayValue(versionInfo?.latest?.version || versionInfo?.latest?.tag) }}
+          </div>
+          <a
+            v-if="versionInfo?.latest?.html_url"
+            :href="versionInfo.latest.html_url"
+            target="_blank"
+            rel="noreferrer"
+            class="mt-1 inline-block text-xs text-primary hover:underline"
+          >
+            查看最新记录
+          </a>
+          <div v-else class="mt-1 text-xs text-base-content/50">GitHub 检测结果</div>
+        </div>
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/80 p-4">
+          <div class="text-xs uppercase tracking-wide text-base-content/50">最新提交</div>
+          <div class="mt-2 font-mono text-lg font-semibold">
+            {{ displayValue(versionInfo?.latest?.commit_short) }}
+          </div>
+          <div class="mt-1 truncate text-xs text-base-content/50">
+            {{ displayValue(versionInfo?.latest?.commit) }}
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-2">
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-3 text-sm">
+          <span class="text-base-content/55">构建时间：</span>
+          <span>{{ displayValue(versionInfo?.build_time) }}</span>
+        </div>
+        <div class="rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-3 text-sm">
+          <span class="text-base-content/55">检测时间：</span>
+          <span>{{ formatTime(versionInfo?.latest?.checked_at) }}</span>
+        </div>
+      </div>
+
+      <div v-if="versionError" class="alert alert-warning mt-4 text-sm">
+        <span class="material-symbols-outlined">warning</span>
+        <span>版本检测失败：{{ versionError }}</span>
       </div>
     </section>
 

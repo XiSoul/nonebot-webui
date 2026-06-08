@@ -14,7 +14,7 @@ from nb_cli.config import SimpleInfo as CliSimpleInfo
 from nb_cli.config.parser import CONFIG_FILE_ENCODING
 
 from nb_cli_plugin_webui.app.handlers import get_pkg_version
-from nb_cli_plugin_webui.app.utils.storage import get_data_file
+from nb_cli_plugin_webui.app.utils.storage import get_data_file, migrate_legacy_runtime_file
 from nb_cli_plugin_webui.app.utils.openapi import resolve_references
 from nb_cli_plugin_webui.app.utils.python_env import resolve_project_python_path
 from nb_cli_plugin_webui.app.models.base import Plugin, ModuleInfo, NoneBotProjectMeta
@@ -81,6 +81,7 @@ class NoneBotProjectManager:
 
     @classmethod
     def _load(cls) -> NoneBotProjectList:
+        migrate_legacy_runtime_file(PROJECT_DATA_FILE, PROJECT_DATA_PATH)
         try:
             raw_text = PROJECT_DATA_PATH.read_text(encoding=PROJECT_DATA_ENCODING).strip()
         except FileNotFoundError as err:

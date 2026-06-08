@@ -25,7 +25,7 @@ docker logs nonebot-webui
 需要注意：
 
 - 登录凭证不是直接当 `Authorization: Bearer ...` 使用的
-- 永久 token 模式下，只要 `/app/config.json` 里的认证配置仍然完整，重启后不会自动换 token
+- 永久 token 模式下，只要 `/data/config.json` 里的认证配置仍然完整，重启后不会自动换 token
 - 如果你在“安全设置”里改成随机 token 模式，新 token 会继续写到容器日志中
 
 ## 页面说明

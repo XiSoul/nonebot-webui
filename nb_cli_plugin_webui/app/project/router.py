@@ -21,6 +21,7 @@ from .service import (
     create_nonebot_project,
     is_managed_project_dir,
     update_nonebot_project_dir,
+    set_nonebot_project_auto_start,
 )
 from ..process.service import (
     stop_project_shell_session,
@@ -35,6 +36,7 @@ from .schemas import (
     ProjectTomlDetail,
     ListProjectResponse,
     UpdateProjectDirData,
+    AutoStartProjectData,
 )
 
 router = APIRouter(tags=["project"])
@@ -187,6 +189,17 @@ async def get_drivers(
     """
     project_metadata = project.read()
     return GenericResponse(detail=project_metadata.drivers)
+
+
+@router.post("/auto-start/use", response_model=GenericResponse[NoneBotProjectMeta])
+async def update_project_auto_start(
+    data: AutoStartProjectData,
+) -> GenericResponse[NoneBotProjectMeta]:
+    """
+    - 更新单个 NoneBot 实例的开机自启状态
+    """
+    result = set_nonebot_project_auto_start(data.project_id, data.auto_start)
+    return GenericResponse(detail=result)
 
 
 @router.post("/update-dir", response_model=GenericResponse[str])

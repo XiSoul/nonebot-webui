@@ -164,6 +164,37 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     return false
   }
 
+  const updateBotAutoStart = async (projectId: string, autoStart: boolean) => {
+    if (!projectId) return false
+
+    const { data, error } = await ProjectService.updateProjectAutoStartV1ProjectAutoStartUsePost({
+      body: {
+        project_id: projectId,
+        auto_start: autoStart
+      }
+    })
+
+    if (error) {
+      toast.add('error', `更新开机自启状态失败, 原因: ${getErrorMessage(error)}`, '', 5000)
+      return false
+    }
+
+    if (data) {
+      const target = bots.value[projectId]
+      if (target) {
+        target.auto_start = autoStart
+      }
+      if (selectedBot.value?.project_id === projectId && selectedBot.value) {
+        selectedBot.value.auto_start = autoStart
+        localStorage.setItem(SELECTED_BOT_KEY, JSON.stringify(selectedBot.value))
+      }
+      toast.add('success', `已${autoStart ? '开启' : '关闭'}开机自启`, '', 3000)
+      return true
+    }
+
+    return false
+  }
+
   watch(
     () => selectedBot.value,
     (bot) => {
@@ -190,6 +221,7 @@ export const useNoneBotStore = defineStore('nonebotStore', () => {
     stopHeartbeat,
     updateBotEnv,
     updateEnv,
-    updateBotDir
+    updateBotDir,
+    updateBotAutoStart
   }
 })

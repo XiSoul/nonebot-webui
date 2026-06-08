@@ -21,11 +21,13 @@ docker run -d \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=18080 \
+  -e WEBUI_DATA_DIR=/data \
+  -e WEBUI_CONFIG_DIR=/data \
+  -e WEBUI_CACHE_DIR=/data \
   -v /home/xisoul/nonebot-webui-data/projects:/projects \
   -v /home/xisoul/nonebot-webui-data/external-projects:/external-projects \
   -v /path/to/your/nonebot/projects:/opt/nonebot-projects \
-  -v /home/xisoul/nonebot-webui-data/config.json:/app/config.json \
-  -v /home/xisoul/nonebot-webui-data/project.json:/app/project.json \
+  -v /home/xisoul/nonebot-webui-data:/data \
   xisoul/nonebot-webui:latest
 ```
 
@@ -39,10 +41,8 @@ docker run -d \
   用于挂载宿主机上已经存在的 NoneBot 项目
 - `/opt/nonebot-projects`
   可选挂载，用于自动扫描并接入宿主机目录下的多个现有项目
-- `/app/config.json`
-  WebUI 的运行配置，程序会写回，不能只读挂载
-- `/app/project.json`
-  实例记录文件，程序会写回，不能只读挂载
+- `/data`
+  WebUI 的运行期状态目录，包括 `config.json`、`project.json`、缓存和日志等可变数据，生产部署建议统一挂载宿主机数据目录到这里
 
 ## 自定义项目挂载
 
@@ -81,12 +81,12 @@ docker run -d \
 
 较新的镜像已经不再声明误导性的默认 `VOLUME`，就是为了避免 NAS 面板自动生成一堆看起来“必须挂载”、但实际容易误导的目录。
 
-如果你的 NAS 面板仍然自动带出旧默认卷，例如 `/data`，建议手动删掉，再按本仓库文档重新配置：
+如果你的 NAS 面板仍然自动带出旧默认卷，建议只保留这些明确需要持久化或接入项目的挂载：
 
+- `/data`
 - `/projects`
 - `/external-projects`
-- `/app/config.json`
-- `/app/project.json`
+- `/opt/nonebot-projects`（可选，批量接入已有项目时使用）
 
 ## 路径映射规则
 
@@ -134,7 +134,7 @@ docker logs nonebot-webui
 
 说明：
 
-- 永久 token 会写入 `/app/config.json`
+- 永久 token 会写入 `/data/config.json`
 - 浏览器实际访问接口使用的是登录后换取的 JWT
 - 修改“安全设置”中的会话时长，只会影响 JWT 生命周期，不等于永久 token 被替换
 

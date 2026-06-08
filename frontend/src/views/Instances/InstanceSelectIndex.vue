@@ -12,6 +12,9 @@ const addBotModal = ref<InstanceType<typeof AddBotIndex> | null>(null)
 const envSwitchingProjectId = ref('')
 const ENV_OPTIONS = ['.env', '.env.prod'] as const
 
+// 开机自启切换时的加载状态，键为 projectId
+const autoStartLoadingProjectId = ref('')
+
 // 修改路径弹窗状态
 const editingBotId = ref('')
 const editingPath = ref('')
@@ -66,6 +69,14 @@ const confirmEditPath = async () => {
     editingBotId.value = ''
     editingPath.value = ''
   }
+}
+
+const toggleAutoStart = async (bot: NoneBotProjectMeta) => {
+  if (autoStartLoadingProjectId.value === bot.project_id) return
+  autoStartLoadingProjectId.value = bot.project_id
+  const targetValue = !bot.auto_start
+  const success = await nonebotStore.updateBotAutoStart(bot.project_id, targetValue)
+  autoStartLoadingProjectId.value = ''
 }
 
 onMounted(async () => {
@@ -186,6 +197,17 @@ onMounted(async () => {
               当前选择
             </span>
             <span class="badge badge-outline">{{ getCurrentEnv(bot) }}</span>
+            <button
+              type="button"
+              class="badge gap-1 cursor-pointer select-none transition hover:bg-base-content/10"
+              :class="bot.auto_start ? 'badge-primary text-base-100' : 'badge-ghost'"
+              :disabled="autoStartLoadingProjectId === bot.project_id"
+              @click.stop="toggleAutoStart(bot)"
+            >
+              <span v-if="autoStartLoadingProjectId === bot.project_id" class="loading loading-spinner loading-xs"></span>
+              <span v-else class="material-symbols-outlined text-xs">power_settings_new</span>
+              开机自启
+            </button>
           </div>
 
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" @click.stop>

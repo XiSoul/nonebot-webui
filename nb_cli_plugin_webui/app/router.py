@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .auth.router import router as auth_router
+from .about.router import router as about_router
 from .backup.router import router as backup_router
 from .file.router import router as file_router
 from .log_center.router import router as log_center_router
@@ -14,6 +15,7 @@ router = APIRouter()
 
 
 router.include_router(auth_router, prefix="/auth")
+router.include_router(about_router, prefix="/about")
 router.include_router(backup_router, prefix="/backup")
 router.include_router(file_router, prefix="/file")
 router.include_router(log_center_router, prefix="/log-center")

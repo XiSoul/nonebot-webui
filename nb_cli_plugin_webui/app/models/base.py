@@ -79,6 +79,9 @@ class NoneBotProjectMeta(BaseModel, Generic[_T]):
 
     is_running: bool = False
     runtime_state: str = "stopped"
+    auto_start: bool = Field(
+        default=False, description="Start this project automatically when WebUI starts."
+    )
     startup_duration_seconds: float = 0.0
     configured_port: int = Field(
         default=0, description="Configured PORT from .env, 0 if unset."

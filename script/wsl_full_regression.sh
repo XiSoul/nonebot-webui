@@ -12,6 +12,7 @@ CONTAINER_NAME="${WEBUI_TEST_CONTAINER_NAME:-nonebot-webui}"
 
 CONFIG_PATH="$ROOT_DIR/data/config.json"
 PROJECT_PATH="$ROOT_DIR/data/project.json"
+DATA_DIR="$ROOT_DIR/data"
 PROJECTS_DIR="$ROOT_DIR/data/projects"
 EXTERNAL_DIR="$ROOT_DIR/data/external-projects"
 
@@ -79,10 +80,12 @@ docker run -d \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=18080 \
+  -e WEBUI_DATA_DIR=/data \
+  -e WEBUI_CONFIG_DIR=/data \
+  -e WEBUI_CACHE_DIR=/data \
   -v "$PROJECTS_DIR:/projects" \
   -v "$EXTERNAL_DIR:/external-projects" \
-  -v "$CONFIG_PATH:/app/config.json" \
-  -v "$PROJECT_PATH:/app/project.json" \
+  -v "$DATA_DIR:/data" \
   "$IMAGE_TAG" >/dev/null
 
 echo "[8/8] functional regression"

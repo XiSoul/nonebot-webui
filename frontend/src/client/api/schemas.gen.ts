@@ -120,6 +120,529 @@ export const AddProjectDataSchema = {
   }
 } as const
 
+export const AutoStartProjectDataSchema = {
+  title: 'AutoStartProjectData',
+  required: ['project_id', 'auto_start'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    auto_start: {
+      title: 'Auto Start',
+      type: 'boolean'
+    }
+  }
+} as const
+
+export const BackupArchiveResponseSchema = {
+  title: 'BackupArchiveResponse',
+  required: ['source', 'name'],
+  type: 'object',
+  properties: {
+    source: {
+      title: 'Source',
+      type: 'string'
+    },
+    key: {
+      title: 'Key',
+      type: 'string',
+      default: ''
+    },
+    name: {
+      title: 'Name',
+      type: 'string'
+    },
+    size: {
+      title: 'Size',
+      type: 'integer',
+      default: 0
+    },
+    created_at: {
+      title: 'Created At',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupConnectivityRequestSchema = {
+  title: 'BackupConnectivityRequest',
+  required: ['source'],
+  type: 'object',
+  properties: {
+    webdav_url: {
+      title: 'Webdav Url',
+      type: 'string',
+      default: ''
+    },
+    webdav_username: {
+      title: 'Webdav Username',
+      type: 'string',
+      default: ''
+    },
+    webdav_password: {
+      title: 'Webdav Password',
+      type: 'string',
+      default: ''
+    },
+    webdav_base_path: {
+      title: 'Webdav Base Path',
+      type: 'string',
+      default: '/'
+    },
+    s3_endpoint: {
+      title: 'S3 Endpoint',
+      type: 'string',
+      default: ''
+    },
+    s3_region: {
+      title: 'S3 Region',
+      type: 'string',
+      default: 'us-east-1'
+    },
+    s3_bucket: {
+      title: 'S3 Bucket',
+      type: 'string',
+      default: ''
+    },
+    s3_access_key: {
+      title: 'S3 Access Key',
+      type: 'string',
+      default: ''
+    },
+    s3_secret_key: {
+      title: 'S3 Secret Key',
+      type: 'string',
+      default: ''
+    },
+    s3_prefix: {
+      title: 'S3 Prefix',
+      type: 'string',
+      default: ''
+    },
+    s3_force_path_style: {
+      title: 'S3 Force Path Style',
+      type: 'boolean',
+      default: true
+    },
+    archive_password: {
+      title: 'Archive Password',
+      type: 'string',
+      default: ''
+    },
+    auto_backup_enabled: {
+      title: 'Auto Backup Enabled',
+      type: 'boolean',
+      default: false
+    },
+    auto_backup_interval_hours: {
+      title: 'Auto Backup Interval Hours',
+      type: 'integer',
+      default: 24
+    },
+    keep_count: {
+      title: 'Keep Count',
+      type: 'integer',
+      default: 10
+    },
+    include_logs: {
+      title: 'Include Logs',
+      type: 'boolean',
+      default: false
+    },
+    log_project_ids: {
+      title: 'Log Project Ids',
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      default: []
+    },
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    }
+  }
+} as const
+
+export const BackupConnectivityResponseSchema = {
+  title: 'BackupConnectivityResponse',
+  required: ['source'],
+  type: 'object',
+  properties: {
+    ok: {
+      title: 'Ok',
+      type: 'boolean',
+      default: false
+    },
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    },
+    message: {
+      title: 'Message',
+      type: 'string',
+      default: ''
+    },
+    detail: {
+      title: 'Detail',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupRemoteItemSchema = {
+  title: 'BackupRemoteItem',
+  required: ['source', 'key', 'name'],
+  type: 'object',
+  properties: {
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    },
+    key: {
+      title: 'Key',
+      type: 'string'
+    },
+    name: {
+      title: 'Name',
+      type: 'string'
+    },
+    size: {
+      title: 'Size',
+      type: 'integer',
+      default: 0
+    },
+    last_modified: {
+      title: 'Last Modified',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupRemoteListResponseSchema = {
+  title: 'BackupRemoteListResponse',
+  required: ['source', 'items'],
+  type: 'object',
+  properties: {
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    },
+    items: {
+      title: 'Items',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/BackupRemoteItem'
+      }
+    }
+  }
+} as const
+
+export const BackupRestoreAsNewRemoteRequestSchema = {
+  title: 'BackupRestoreAsNewRemoteRequest',
+  required: ['source', 'key'],
+  type: 'object',
+  properties: {
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    },
+    key: {
+      title: 'Key',
+      type: 'string'
+    },
+    password: {
+      title: 'Password',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupRestoreAsNewResponseSchema = {
+  title: 'BackupRestoreAsNewResponse',
+  required: ['project_id', 'project_name', 'project_dir'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    project_name: {
+      title: 'Project Name',
+      type: 'string'
+    },
+    project_dir: {
+      title: 'Project Dir',
+      type: 'string'
+    },
+    project_id_reassigned: {
+      title: 'Project Id Reassigned',
+      type: 'boolean',
+      default: false
+    },
+    message: {
+      title: 'Message',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupRestoreRemoteRequestSchema = {
+  title: 'BackupRestoreRemoteRequest',
+  required: ['source', 'key'],
+  type: 'object',
+  properties: {
+    source: {
+      title: 'Source',
+      enum: ['webdav', 's3'],
+      type: 'string'
+    },
+    key: {
+      title: 'Key',
+      type: 'string'
+    },
+    password: {
+      title: 'Password',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupRestoreResponseSchema = {
+  title: 'BackupRestoreResponse',
+  type: 'object',
+  properties: {
+    restarted: {
+      title: 'Restarted',
+      type: 'boolean',
+      default: false
+    },
+    message: {
+      title: 'Message',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const BackupSettingsResponseSchema = {
+  title: 'BackupSettingsResponse',
+  type: 'object',
+  properties: {
+    webdav_url: {
+      title: 'Webdav Url',
+      type: 'string',
+      default: ''
+    },
+    webdav_username: {
+      title: 'Webdav Username',
+      type: 'string',
+      default: ''
+    },
+    webdav_password: {
+      title: 'Webdav Password',
+      type: 'string',
+      default: ''
+    },
+    webdav_base_path: {
+      title: 'Webdav Base Path',
+      type: 'string',
+      default: '/'
+    },
+    webdav_configured: {
+      title: 'Webdav Configured',
+      type: 'boolean',
+      default: false
+    },
+    s3_endpoint: {
+      title: 'S3 Endpoint',
+      type: 'string',
+      default: ''
+    },
+    s3_region: {
+      title: 'S3 Region',
+      type: 'string',
+      default: 'us-east-1'
+    },
+    s3_bucket: {
+      title: 'S3 Bucket',
+      type: 'string',
+      default: ''
+    },
+    s3_access_key: {
+      title: 'S3 Access Key',
+      type: 'string',
+      default: ''
+    },
+    s3_secret_key: {
+      title: 'S3 Secret Key',
+      type: 'string',
+      default: ''
+    },
+    s3_prefix: {
+      title: 'S3 Prefix',
+      type: 'string',
+      default: ''
+    },
+    s3_force_path_style: {
+      title: 'S3 Force Path Style',
+      type: 'boolean',
+      default: true
+    },
+    s3_configured: {
+      title: 'S3 Configured',
+      type: 'boolean',
+      default: false
+    },
+    archive_password: {
+      title: 'Archive Password',
+      type: 'string',
+      default: ''
+    },
+    archive_password_configured: {
+      title: 'Archive Password Configured',
+      type: 'boolean',
+      default: false
+    },
+    auto_backup_enabled: {
+      title: 'Auto Backup Enabled',
+      type: 'boolean',
+      default: false
+    },
+    auto_backup_interval_hours: {
+      title: 'Auto Backup Interval Hours',
+      type: 'integer',
+      default: 24
+    },
+    keep_count: {
+      title: 'Keep Count',
+      type: 'integer',
+      default: 10
+    },
+    include_logs: {
+      title: 'Include Logs',
+      type: 'boolean',
+      default: false
+    },
+    log_project_ids: {
+      title: 'Log Project Ids',
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      default: []
+    }
+  }
+} as const
+
+export const BackupSettingsUpdateRequestSchema = {
+  title: 'BackupSettingsUpdateRequest',
+  type: 'object',
+  properties: {
+    webdav_url: {
+      title: 'Webdav Url',
+      type: 'string',
+      default: ''
+    },
+    webdav_username: {
+      title: 'Webdav Username',
+      type: 'string',
+      default: ''
+    },
+    webdav_password: {
+      title: 'Webdav Password',
+      type: 'string',
+      default: ''
+    },
+    webdav_base_path: {
+      title: 'Webdav Base Path',
+      type: 'string',
+      default: '/'
+    },
+    s3_endpoint: {
+      title: 'S3 Endpoint',
+      type: 'string',
+      default: ''
+    },
+    s3_region: {
+      title: 'S3 Region',
+      type: 'string',
+      default: 'us-east-1'
+    },
+    s3_bucket: {
+      title: 'S3 Bucket',
+      type: 'string',
+      default: ''
+    },
+    s3_access_key: {
+      title: 'S3 Access Key',
+      type: 'string',
+      default: ''
+    },
+    s3_secret_key: {
+      title: 'S3 Secret Key',
+      type: 'string',
+      default: ''
+    },
+    s3_prefix: {
+      title: 'S3 Prefix',
+      type: 'string',
+      default: ''
+    },
+    s3_force_path_style: {
+      title: 'S3 Force Path Style',
+      type: 'boolean',
+      default: true
+    },
+    archive_password: {
+      title: 'Archive Password',
+      type: 'string',
+      default: ''
+    },
+    auto_backup_enabled: {
+      title: 'Auto Backup Enabled',
+      type: 'boolean',
+      default: false
+    },
+    auto_backup_interval_hours: {
+      title: 'Auto Backup Interval Hours',
+      type: 'integer',
+      default: 24
+    },
+    keep_count: {
+      title: 'Keep Count',
+      type: 'integer',
+      default: 10
+    },
+    include_logs: {
+      title: 'Include Logs',
+      type: 'boolean',
+      default: false
+    },
+    log_project_ids: {
+      title: 'Log Project Ids',
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      default: []
+    }
+  }
+} as const
+
 export const Body_search_nonebot_store_item_v1_store_nonebot_search_postSchema = {
   title: 'Body_search_nonebot_store_item_v1_store_nonebot_search_post',
   required: ['data'],
@@ -136,6 +659,759 @@ export const ConfigTypeSchema = {
   enum: ['project', 'toml'],
   type: 'string',
   description: 'An enumeration.'
+} as const
+
+export const ContainerRuntimeConnectivityItemSchema = {
+  title: 'ContainerRuntimeConnectivityItem',
+  required: ['name', 'target', 'ok'],
+  type: 'object',
+  properties: {
+    name: {
+      title: 'Name',
+      type: 'string'
+    },
+    target: {
+      title: 'Target',
+      type: 'string'
+    },
+    ok: {
+      title: 'Ok',
+      type: 'boolean'
+    },
+    skipped: {
+      title: 'Skipped',
+      type: 'boolean',
+      default: false
+    },
+    status_code: {
+      title: 'Status Code',
+      type: 'integer',
+      default: 0
+    },
+    elapsed_ms: {
+      title: 'Elapsed Ms',
+      type: 'integer',
+      default: 0
+    },
+    error: {
+      title: 'Error',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const ContainerRuntimeConnectivityRequestSchema = {
+  title: 'ContainerRuntimeConnectivityRequest',
+  type: 'object',
+  properties: {
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    },
+    debian_mirror: {
+      title: 'Debian Mirror',
+      type: 'string',
+      default: ''
+    },
+    pip_index_url: {
+      title: 'Pip Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_extra_index_url: {
+      title: 'Pip Extra Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_trusted_host: {
+      title: 'Pip Trusted Host',
+      type: 'string',
+      default: ''
+    },
+    github_proxy_base_url: {
+      title: 'Github Proxy Base Url',
+      type: 'string',
+      default: ''
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      default: 'http_https'
+    },
+    bot_proxy_instances: {
+      title: 'Bot Proxy Instances',
+      type: 'string',
+      default: ''
+    },
+    mode: {
+      title: 'Mode',
+      type: 'string',
+      default: 'quick'
+    }
+  }
+} as const
+
+export const ContainerRuntimeConnectivityResponseSchema = {
+  title: 'ContainerRuntimeConnectivityResponse',
+  required: ['ok', 'results'],
+  type: 'object',
+  properties: {
+    ok: {
+      title: 'Ok',
+      type: 'boolean'
+    },
+    results: {
+      title: 'Results',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/ContainerRuntimeConnectivityItem'
+      }
+    }
+  }
+} as const
+
+export const ContainerRuntimePresetBenchmarkItemSchema = {
+  title: 'ContainerRuntimePresetBenchmarkItem',
+  required: ['preset_id', 'preset_name', 'ok'],
+  type: 'object',
+  properties: {
+    preset_id: {
+      title: 'Preset Id',
+      type: 'string'
+    },
+    preset_name: {
+      title: 'Preset Name',
+      type: 'string'
+    },
+    ok: {
+      title: 'Ok',
+      type: 'boolean'
+    },
+    score_ms: {
+      title: 'Score Ms',
+      type: 'integer',
+      default: 0
+    },
+    debian_elapsed_ms: {
+      title: 'Debian Elapsed Ms',
+      type: 'integer',
+      default: 0
+    },
+    pip_elapsed_ms: {
+      title: 'Pip Elapsed Ms',
+      type: 'integer',
+      default: 0
+    },
+    error: {
+      title: 'Error',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const ContainerRuntimePresetBenchmarkRequestSchema = {
+  title: 'ContainerRuntimePresetBenchmarkRequest',
+  type: 'object',
+  properties: {
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const ContainerRuntimePresetBenchmarkResponseSchema = {
+  title: 'ContainerRuntimePresetBenchmarkResponse',
+  required: ['results'],
+  type: 'object',
+  properties: {
+    results: {
+      title: 'Results',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/ContainerRuntimePresetBenchmarkItem'
+      }
+    }
+  }
+} as const
+
+export const ContainerRuntimeProfileApplyRequestSchema = {
+  title: 'ContainerRuntimeProfileApplyRequest',
+  required: ['name'],
+  type: 'object',
+  properties: {
+    name: {
+      title: 'Name',
+      type: 'string'
+    }
+  }
+} as const
+
+export const ContainerRuntimeProfileItemSchema = {
+  title: 'ContainerRuntimeProfileItem',
+  required: ['name'],
+  type: 'object',
+  properties: {
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    },
+    debian_mirror: {
+      title: 'Debian Mirror',
+      type: 'string',
+      default: ''
+    },
+    pip_index_url: {
+      title: 'Pip Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_extra_index_url: {
+      title: 'Pip Extra Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_trusted_host: {
+      title: 'Pip Trusted Host',
+      type: 'string',
+      default: ''
+    },
+    github_proxy_base_url: {
+      title: 'Github Proxy Base Url',
+      type: 'string',
+      default: ''
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      default: 'http_https'
+    },
+    bot_proxy_instances: {
+      title: 'Bot Proxy Instances',
+      type: 'string',
+      default: ''
+    },
+    name: {
+      title: 'Name',
+      type: 'string'
+    }
+  }
+} as const
+
+export const ContainerRuntimeProfileListResponseSchema = {
+  title: 'ContainerRuntimeProfileListResponse',
+  required: ['profiles'],
+  type: 'object',
+  properties: {
+    profiles: {
+      title: 'Profiles',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/ContainerRuntimeProfileItem'
+      }
+    }
+  }
+} as const
+
+export const ContainerRuntimeProfileSaveRequestSchema = {
+  title: 'ContainerRuntimeProfileSaveRequest',
+  required: ['name'],
+  type: 'object',
+  properties: {
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    },
+    debian_mirror: {
+      title: 'Debian Mirror',
+      type: 'string',
+      default: ''
+    },
+    pip_index_url: {
+      title: 'Pip Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_extra_index_url: {
+      title: 'Pip Extra Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_trusted_host: {
+      title: 'Pip Trusted Host',
+      type: 'string',
+      default: ''
+    },
+    github_proxy_base_url: {
+      title: 'Github Proxy Base Url',
+      type: 'string',
+      default: ''
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      default: 'http_https'
+    },
+    bot_proxy_instances: {
+      title: 'Bot Proxy Instances',
+      type: 'string',
+      default: ''
+    },
+    name: {
+      title: 'Name',
+      type: 'string'
+    }
+  }
+} as const
+
+export const ContainerRuntimeSettingsResponseSchema = {
+  title: 'ContainerRuntimeSettingsResponse',
+  required: ['is_docker'],
+  type: 'object',
+  properties: {
+    is_docker: {
+      title: 'Is Docker',
+      type: 'boolean'
+    },
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    },
+    debian_mirror: {
+      title: 'Debian Mirror',
+      type: 'string',
+      default: ''
+    },
+    pip_index_url: {
+      title: 'Pip Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_extra_index_url: {
+      title: 'Pip Extra Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_trusted_host: {
+      title: 'Pip Trusted Host',
+      type: 'string',
+      default: ''
+    },
+    github_proxy_base_url: {
+      title: 'Github Proxy Base Url',
+      type: 'string',
+      default: ''
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      default: 'http_https'
+    },
+    bot_proxy_instances: {
+      title: 'Bot Proxy Instances',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const ContainerRuntimeSettingsUpdateSchema = {
+  title: 'ContainerRuntimeSettingsUpdate',
+  type: 'object',
+  properties: {
+    proxy_url: {
+      title: 'Proxy Url',
+      type: 'string',
+      default: ''
+    },
+    http_proxy: {
+      title: 'Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    https_proxy: {
+      title: 'Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    all_proxy: {
+      title: 'All Proxy',
+      type: 'string',
+      default: ''
+    },
+    no_proxy: {
+      title: 'No Proxy',
+      type: 'string',
+      default: ''
+    },
+    debian_mirror: {
+      title: 'Debian Mirror',
+      type: 'string',
+      default: ''
+    },
+    pip_index_url: {
+      title: 'Pip Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_extra_index_url: {
+      title: 'Pip Extra Index Url',
+      type: 'string',
+      default: ''
+    },
+    pip_trusted_host: {
+      title: 'Pip Trusted Host',
+      type: 'string',
+      default: ''
+    },
+    github_proxy_base_url: {
+      title: 'Github Proxy Base Url',
+      type: 'string',
+      default: ''
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      default: 'http_https'
+    },
+    bot_proxy_instances: {
+      title: 'Bot Proxy Instances',
+      type: 'string',
+      default: ''
+    }
+  }
 } as const
 
 export const CreateProjectDataSchema = {
@@ -280,6 +1556,230 @@ export const FileInfoSchema = {
     absolute_path: {
       title: 'Absolute Path',
       type: 'string'
+    },
+    size: {
+      title: 'Size',
+      type: 'integer',
+      default: 0
+    }
+  }
+} as const
+
+export const FileManagerContentResponseSchema = {
+  title: 'FileManagerContentResponse',
+  required: ['scope', 'path', 'content'],
+  type: 'object',
+  properties: {
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    root_path: {
+      title: 'Root Path',
+      type: 'string',
+      default: ''
+    },
+    path: {
+      title: 'Path',
+      type: 'string'
+    },
+    content: {
+      title: 'Content',
+      type: 'string'
+    },
+    encoding: {
+      title: 'Encoding',
+      type: 'string',
+      default: 'utf-8'
+    },
+    size: {
+      title: 'Size',
+      type: 'integer',
+      default: 0
+    }
+  }
+} as const
+
+export const FileManagerCreateRequestSchema = {
+  title: 'FileManagerCreateRequest',
+  required: ['project_id', 'scope', 'name', 'is_dir'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    path: {
+      title: 'Path',
+      type: 'string',
+      default: ''
+    },
+    name: {
+      title: 'Name',
+      type: 'string'
+    },
+    is_dir: {
+      title: 'Is Dir',
+      type: 'boolean'
+    }
+  }
+} as const
+
+export const FileManagerDeleteRequestSchema = {
+  title: 'FileManagerDeleteRequest',
+  required: ['project_id', 'scope', 'path'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    path: {
+      title: 'Path',
+      type: 'string'
+    }
+  }
+} as const
+
+export const FileManagerListResponseSchema = {
+  title: 'FileManagerListResponse',
+  required: ['scope', 'items'],
+  type: 'object',
+  properties: {
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    root_path: {
+      title: 'Root Path',
+      type: 'string',
+      default: ''
+    },
+    current_path: {
+      title: 'Current Path',
+      type: 'string',
+      default: ''
+    },
+    available: {
+      title: 'Available',
+      type: 'boolean',
+      default: true
+    },
+    detail: {
+      title: 'Detail',
+      type: 'string',
+      default: ''
+    },
+    items: {
+      title: 'Items',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/FileInfo'
+      }
+    }
+  }
+} as const
+
+export const FileManagerRootItemSchema = {
+  title: 'FileManagerRootItem',
+  required: ['scope', 'label'],
+  type: 'object',
+  properties: {
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    label: {
+      title: 'Label',
+      type: 'string'
+    },
+    description: {
+      title: 'Description',
+      type: 'string',
+      default: ''
+    },
+    root_path: {
+      title: 'Root Path',
+      type: 'string',
+      default: ''
+    },
+    available: {
+      title: 'Available',
+      type: 'boolean',
+      default: true
+    },
+    detail: {
+      title: 'Detail',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const FileManagerRootsResponseSchema = {
+  title: 'FileManagerRootsResponse',
+  required: ['project_id', 'roots'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    project_name: {
+      title: 'Project Name',
+      type: 'string',
+      default: ''
+    },
+    roots: {
+      title: 'Roots',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/FileManagerRootItem'
+      }
+    }
+  }
+} as const
+
+export const FileManagerWriteRequestSchema = {
+  title: 'FileManagerWriteRequest',
+  required: ['project_id', 'scope', 'path'],
+  type: 'object',
+  properties: {
+    project_id: {
+      title: 'Project Id',
+      type: 'string'
+    },
+    scope: {
+      title: 'Scope',
+      enum: ['mapped', 'installed'],
+      type: 'string'
+    },
+    path: {
+      title: 'Path',
+      type: 'string'
+    },
+    content: {
+      title: 'Content',
+      type: 'string',
+      default: ''
+    },
+    encoding: {
+      title: 'Encoding',
+      type: 'string',
+      default: 'utf-8'
     }
   }
 } as const
@@ -295,6 +1795,149 @@ export const FileResponseSchema = {
       items: {
         $ref: '#/components/schemas/FileInfo'
       }
+    }
+  }
+} as const
+
+export const GenericResponse_BackupArchiveResponse_Schema = {
+  title: 'GenericResponse[BackupArchiveResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupArchiveResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_BackupConnectivityResponse_Schema = {
+  title: 'GenericResponse[BackupConnectivityResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupConnectivityResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_BackupRemoteListResponse_Schema = {
+  title: 'GenericResponse[BackupRemoteListResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupRemoteListResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_BackupRestoreAsNewResponse_Schema = {
+  title: 'GenericResponse[BackupRestoreAsNewResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupRestoreAsNewResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_BackupRestoreResponse_Schema = {
+  title: 'GenericResponse[BackupRestoreResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupRestoreResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_BackupSettingsResponse_Schema = {
+  title: 'GenericResponse[BackupSettingsResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/BackupSettingsResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_ContainerRuntimeConnectivityResponse_Schema = {
+  title: 'GenericResponse[ContainerRuntimeConnectivityResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/ContainerRuntimeConnectivityResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_ContainerRuntimePresetBenchmarkResponse_Schema = {
+  title: 'GenericResponse[ContainerRuntimePresetBenchmarkResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/ContainerRuntimePresetBenchmarkResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_ContainerRuntimeProfileListResponse_Schema = {
+  title: 'GenericResponse[ContainerRuntimeProfileListResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/ContainerRuntimeProfileListResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_ContainerRuntimeSettingsResponse_Schema = {
+  title: 'GenericResponse[ContainerRuntimeSettingsResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/ContainerRuntimeSettingsResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_GlobalLogCatalogResponse_Schema = {
+  title: 'GenericResponse[GlobalLogCatalogResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/GlobalLogCatalogResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_GlobalLogEntriesResponse_Schema = {
+  title: 'GenericResponse[GlobalLogEntriesResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/GlobalLogEntriesResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_GlobalLogSettingsResponse_Schema = {
+  title: 'GenericResponse[GlobalLogSettingsResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/GlobalLogSettingsResponse'
     }
   }
 } as const
@@ -345,6 +1988,22 @@ export const GenericResponse_List_nb_cli_plugin_webui_app_models_base_Plugin__Sc
   }
 } as const
 
+export const GenericResponse_List_nb_cli_plugin_webui_app_process_schemas_TerminalSessionInfo__Schema =
+  {
+    title: 'GenericResponse[List[nb_cli_plugin_webui.app.process.schemas.TerminalSessionInfo]]',
+    required: ['detail'],
+    type: 'object',
+    properties: {
+      detail: {
+        title: 'Detail',
+        type: 'array',
+        items: {
+          $ref: '#/components/schemas/TerminalSessionInfo'
+        }
+      }
+    }
+  } as const
+
 export const GenericResponse_List_str__Schema = {
   title: 'GenericResponse[List[str]]',
   required: ['detail'],
@@ -382,6 +2041,50 @@ export const GenericResponse_ProjectTomlDetail_Schema = {
   }
 } as const
 
+export const GenericResponse_SecuritySettingsResponse_Schema = {
+  title: 'GenericResponse[SecuritySettingsResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/SecuritySettingsResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_SecuritySettingsUpdateResponse_Schema = {
+  title: 'GenericResponse[SecuritySettingsUpdateResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/SecuritySettingsUpdateResponse'
+    }
+  }
+} as const
+
+export const GenericResponse_TerminalSessionInfo_Schema = {
+  title: 'GenericResponse[TerminalSessionInfo]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/TerminalSessionInfo'
+    }
+  }
+} as const
+
+export const GenericResponse_VersionInfoResponse_Schema = {
+  title: 'GenericResponse[VersionInfoResponse]',
+  required: ['detail'],
+  type: 'object',
+  properties: {
+    detail: {
+      $ref: '#/components/schemas/VersionInfoResponse'
+    }
+  }
+} as const
+
 export const GenericResponse_int_Schema = {
   title: 'GenericResponse[int]',
   required: ['detail'],
@@ -402,6 +2105,188 @@ export const GenericResponse_str_Schema = {
     detail: {
       title: 'Detail',
       type: 'string'
+    }
+  }
+} as const
+
+export const GlobalLogCatalogResponseSchema = {
+  title: 'GlobalLogCatalogResponse',
+  required: ['kind'],
+  type: 'object',
+  properties: {
+    kind: {
+      title: 'Kind',
+      enum: ['webui', 'instance'],
+      type: 'string'
+    },
+    dates: {
+      title: 'Dates',
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      default: []
+    }
+  }
+} as const
+
+export const GlobalLogEntriesResponseSchema = {
+  title: 'GlobalLogEntriesResponse',
+  required: ['kind'],
+  type: 'object',
+  properties: {
+    kind: {
+      title: 'Kind',
+      enum: ['webui', 'instance'],
+      type: 'string'
+    },
+    date: {
+      title: 'Date',
+      type: 'string',
+      default: ''
+    },
+    total: {
+      title: 'Total',
+      type: 'integer',
+      default: 0
+    },
+    items: {
+      title: 'Items',
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/GlobalLogEntry'
+      },
+      default: []
+    }
+  }
+} as const
+
+export const GlobalLogEntrySchema = {
+  title: 'GlobalLogEntry',
+  type: 'object',
+  properties: {
+    timestamp: {
+      title: 'Timestamp',
+      type: 'string',
+      default: ''
+    },
+    level: {
+      title: 'Level',
+      type: 'string',
+      default: 'INFO'
+    },
+    source: {
+      title: 'Source',
+      type: 'string',
+      default: ''
+    },
+    message: {
+      title: 'Message',
+      type: 'string',
+      default: ''
+    },
+    detail: {
+      title: 'Detail',
+      type: 'string',
+      default: ''
+    },
+    project_id: {
+      title: 'Project Id',
+      type: 'string',
+      default: ''
+    },
+    project_name: {
+      title: 'Project Name',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const GlobalLogEventRequestSchema = {
+  title: 'GlobalLogEventRequest',
+  required: ['message'],
+  type: 'object',
+  properties: {
+    level: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/LogLevels'
+        }
+      ],
+      default: 'INFO'
+    },
+    message: {
+      title: 'Message',
+      type: 'string'
+    },
+    detail: {
+      title: 'Detail',
+      type: 'string',
+      default: ''
+    },
+    source: {
+      title: 'Source',
+      type: 'string',
+      default: 'frontend'
+    },
+    project_id: {
+      title: 'Project Id',
+      type: 'string',
+      default: ''
+    },
+    project_name: {
+      title: 'Project Name',
+      type: 'string',
+      default: ''
+    }
+  }
+} as const
+
+export const GlobalLogSettingsResponseSchema = {
+  title: 'GlobalLogSettingsResponse',
+  type: 'object',
+  properties: {
+    min_level: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/LogLevels'
+        }
+      ],
+      default: 'DEBUG'
+    },
+    retention_days: {
+      title: 'Retention Days',
+      type: 'integer',
+      default: 7
+    },
+    available_levels: {
+      title: 'Available Levels',
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      default: []
+    }
+  }
+} as const
+
+export const GlobalLogSettingsUpdateRequestSchema = {
+  title: 'GlobalLogSettingsUpdateRequest',
+  type: 'object',
+  properties: {
+    min_level: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/LogLevels'
+        }
+      ],
+      default: 'DEBUG'
+    },
+    retention_days: {
+      title: 'Retention Days',
+      type: 'integer',
+      default: 7
     }
   }
 } as const
@@ -454,8 +2339,14 @@ export const ListProjectResponseSchema = {
 
 export const LogLevelSchema = {
   title: 'LogLevel',
-  enum: ['STDOUT', 'INFO', 'WARNING', 'ERROR', 'DEBUG'],
+  enum: ['', 'STDOUT', 'INFO', 'WARNING', 'ERROR', 'DEBUG'],
   type: 'string',
+  description: 'An enumeration.'
+} as const
+
+export const LogLevelsSchema = {
+  title: 'LogLevels',
+  enum: ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
   description: 'An enumeration.'
 } as const
 
@@ -708,9 +2599,21 @@ export const NoneBotProjectMetaSchema = {
       type: 'string',
       default: 'stopped'
     },
+    auto_start: {
+      title: 'Auto Start',
+      type: 'boolean',
+      description: 'Start this project automatically when WebUI starts.',
+      default: false
+    },
     startup_duration_seconds: {
       title: 'Startup Duration Seconds',
       type: 'number',
+      default: 0
+    },
+    configured_port: {
+      title: 'Configured Port',
+      type: 'integer',
+      description: 'Configured PORT from .env, 0 if unset.',
       default: 0
     },
     use_env: {
@@ -727,6 +2630,72 @@ export const NoneBotProjectMetaSchema = {
       title: 'Run Script Name',
       type: 'string',
       default: 'bot.py'
+    },
+    bot_use_global_proxy: {
+      title: 'Bot Use Global Proxy',
+      type: 'boolean',
+      description: 'Use global bot proxy from system settings.',
+      default: true
+    },
+    bot_http_proxy: {
+      title: 'Bot Http Proxy',
+      type: 'string',
+      description: 'Bot HTTP proxy URL.',
+      default: ''
+    },
+    bot_https_proxy: {
+      title: 'Bot Https Proxy',
+      type: 'string',
+      description: 'Bot HTTPS proxy URL.',
+      default: ''
+    },
+    bot_all_proxy: {
+      title: 'Bot All Proxy',
+      type: 'string',
+      description: 'Bot ALL_PROXY URL.',
+      default: ''
+    },
+    bot_no_proxy: {
+      title: 'Bot No Proxy',
+      type: 'string',
+      description: 'Bot NO_PROXY values.',
+      default: ''
+    },
+    bot_proxy_protocol: {
+      title: 'Bot Proxy Protocol',
+      type: 'string',
+      description: 'Bot proxy builder protocol.',
+      default: 'http'
+    },
+    bot_proxy_host: {
+      title: 'Bot Proxy Host',
+      type: 'string',
+      description: 'Bot proxy host.',
+      default: ''
+    },
+    bot_proxy_port: {
+      title: 'Bot Proxy Port',
+      type: 'string',
+      description: 'Bot proxy port.',
+      default: ''
+    },
+    bot_proxy_username: {
+      title: 'Bot Proxy Username',
+      type: 'string',
+      description: 'Bot proxy username.',
+      default: ''
+    },
+    bot_proxy_password: {
+      title: 'Bot Proxy Password',
+      type: 'string',
+      description: 'Bot proxy password.',
+      default: ''
+    },
+    bot_proxy_apply_target: {
+      title: 'Bot Proxy Apply Target',
+      type: 'string',
+      description: 'Bot proxy apply target.',
+      default: 'http_https'
     }
   }
 } as const
@@ -786,6 +2755,11 @@ export const ProjectTomlDetailSchema = {
     project_name: {
       title: 'Project Name',
       type: 'string'
+    },
+    resolved_project_dir: {
+      title: 'Resolved Project Dir',
+      type: 'string',
+      default: ''
     },
     adapters: {
       title: 'Adapters',
@@ -847,6 +2821,152 @@ export const SearchRequestSchema = {
     content: {
       title: 'Content',
       type: 'string'
+    }
+  }
+} as const
+
+export const SecuritySettingsResponseSchema = {
+  title: 'SecuritySettingsResponse',
+  required: ['is_docker'],
+  type: 'object',
+  properties: {
+    is_docker: {
+      title: 'Is Docker',
+      type: 'boolean'
+    },
+    service_host: {
+      title: 'Service Host',
+      type: 'string',
+      default: ''
+    },
+    service_port: {
+      title: 'Service Port',
+      type: 'integer',
+      default: 18080
+    },
+    token_hint: {
+      title: 'Token Hint',
+      type: 'string',
+      default: ''
+    },
+    token_mode: {
+      title: 'Token Mode',
+      type: 'string',
+      default: 'permanent'
+    },
+    random_token_expire_hours: {
+      title: 'Random Token Expire Hours',
+      type: 'integer',
+      default: 24
+    },
+    session_token_expire_hours: {
+      title: 'Session Token Expire Hours',
+      type: 'integer',
+      default: 24
+    },
+    token_expires_at: {
+      title: 'Token Expires At',
+      type: 'integer',
+      default: 0
+    }
+  }
+} as const
+
+export const SecuritySettingsUpdateRequestSchema = {
+  title: 'SecuritySettingsUpdateRequest',
+  type: 'object',
+  properties: {
+    current_token: {
+      title: 'Current Token',
+      type: 'string',
+      default: ''
+    },
+    new_token: {
+      title: 'New Token',
+      type: 'string',
+      default: ''
+    },
+    service_port: {
+      title: 'Service Port',
+      type: 'integer',
+      default: 18080
+    },
+    token_mode: {
+      title: 'Token Mode',
+      type: 'string',
+      default: 'permanent'
+    },
+    random_token_expire_hours: {
+      title: 'Random Token Expire Hours',
+      type: 'integer',
+      default: 24
+    },
+    session_token_expire_hours: {
+      title: 'Session Token Expire Hours',
+      type: 'integer',
+      default: 24
+    }
+  }
+} as const
+
+export const SecuritySettingsUpdateResponseSchema = {
+  title: 'SecuritySettingsUpdateResponse',
+  type: 'object',
+  properties: {
+    token_changed: {
+      title: 'Token Changed',
+      type: 'boolean',
+      default: false
+    },
+    reauth_required: {
+      title: 'Reauth Required',
+      type: 'boolean',
+      default: false
+    },
+    port_changed: {
+      title: 'Port Changed',
+      type: 'boolean',
+      default: false
+    },
+    restart_scheduled: {
+      title: 'Restart Scheduled',
+      type: 'boolean',
+      default: false
+    },
+    service_port: {
+      title: 'Service Port',
+      type: 'integer',
+      default: 18080
+    },
+    message: {
+      title: 'Message',
+      type: 'string',
+      default: ''
+    },
+    token_mode: {
+      title: 'Token Mode',
+      type: 'string',
+      default: 'permanent'
+    },
+    random_token_expire_hours: {
+      title: 'Random Token Expire Hours',
+      type: 'integer',
+      default: 24
+    },
+    session_token_expire_hours: {
+      title: 'Session Token Expire Hours',
+      type: 'integer',
+      default: 24
+    },
+    token_expires_at: {
+      title: 'Token Expires At',
+      type: 'integer',
+      default: 0
+    },
+    login_token: {
+      title: 'Login Token',
+      type: 'string',
+      default: ''
     }
   }
 } as const
@@ -914,6 +3034,50 @@ export const StoreListResponseSchema = {
   }
 } as const
 
+export const TerminalSessionInfoSchema = {
+  title: 'TerminalSessionInfo',
+  required: ['session_id', 'title', 'created_at', 'is_active', 'is_running', 'log_key'],
+  type: 'object',
+  properties: {
+    session_id: {
+      title: 'Session Id',
+      type: 'string'
+    },
+    title: {
+      title: 'Title',
+      type: 'string'
+    },
+    created_at: {
+      title: 'Created At',
+      type: 'number'
+    },
+    is_active: {
+      title: 'Is Active',
+      type: 'boolean'
+    },
+    is_running: {
+      title: 'Is Running',
+      type: 'boolean'
+    },
+    log_key: {
+      title: 'Log Key',
+      type: 'string'
+    }
+  }
+} as const
+
+export const UpdateProjectDirDataSchema = {
+  title: 'UpdateProjectDirData',
+  required: ['project_dir'],
+  type: 'object',
+  properties: {
+    project_dir: {
+      title: 'Project Dir',
+      type: 'string'
+    }
+  }
+} as const
+
 export const ValidationErrorSchema = {
   title: 'ValidationError',
   required: ['loc', 'msg', 'type'],
@@ -951,6 +3115,88 @@ export const VerifyRequestSchema = {
   properties: {
     jwt_token: {
       title: 'Jwt Token',
+      type: 'string'
+    }
+  }
+} as const
+
+export const VersionInfoResponseSchema = {
+  title: 'VersionInfoResponse',
+  required: ['package_name', 'version', 'repository', 'branch', 'status'],
+  type: 'object',
+  properties: {
+    package_name: {
+      title: 'Package Name',
+      type: 'string'
+    },
+    version: {
+      title: 'Version',
+      type: 'string'
+    },
+    commit: {
+      title: 'Commit',
+      type: 'string'
+    },
+    commit_short: {
+      title: 'Commit Short',
+      type: 'string'
+    },
+    build_time: {
+      title: 'Build Time',
+      type: 'string'
+    },
+    repository: {
+      title: 'Repository',
+      type: 'string'
+    },
+    branch: {
+      title: 'Branch',
+      type: 'string'
+    },
+    latest: {
+      $ref: '#/components/schemas/VersionLatestInfo'
+    },
+    update_available: {
+      title: 'Update Available',
+      type: 'boolean'
+    },
+    status: {
+      title: 'Status',
+      type: 'string'
+    },
+    error: {
+      title: 'Error',
+      type: 'string'
+    }
+  }
+} as const
+
+export const VersionLatestInfoSchema = {
+  title: 'VersionLatestInfo',
+  type: 'object',
+  properties: {
+    version: {
+      title: 'Version',
+      type: 'string'
+    },
+    tag: {
+      title: 'Tag',
+      type: 'string'
+    },
+    commit: {
+      title: 'Commit',
+      type: 'string'
+    },
+    commit_short: {
+      title: 'Commit Short',
+      type: 'string'
+    },
+    html_url: {
+      title: 'Html Url',
+      type: 'string'
+    },
+    checked_at: {
+      title: 'Checked At',
       type: 'string'
     }
   }

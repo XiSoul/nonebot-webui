@@ -117,7 +117,8 @@ def generate_openapi():
 
 def reset_token():
     """
-    Reset WebUI login token. Reads /app/config.json, generates a new token,
+    Reset WebUI login token. Reads the configured runtime config file
+    (Docker default: /data/config.json), generates a new token,
     updates the file, and prints the new token to stdout.
 
     Usage (inside Docker container):

@@ -13,7 +13,7 @@ from noneprompt import InputPrompt, ConfirmPrompt
 from nb_cli_plugin_webui.i18n import _
 
 from .utils.security import salt
-from .utils.storage import get_config_file
+from .utils.storage import get_config_file, migrate_legacy_runtime_file
 from .utils.string_utils import (
     TokenComplexityError,
     check_string_complexity,
@@ -349,6 +349,8 @@ def ensure_docker_config() -> Optional[str]:
     if "WEBUI_BUILD" not in os.environ:
         return None
 
+    migrate_legacy_runtime_file(CONFIG_FILE, CONFIG_FILE_PATH)
+
     raw_config: Dict[str, Any] = {}
     if CONFIG_FILE_PATH.exists():
         try:
@@ -358,7 +360,7 @@ def ensure_docker_config() -> Optional[str]:
         except (OSError, json.JSONDecodeError):
             raise RuntimeError(
                 "Config file exists but is not valid JSON. Refusing to regenerate login credentials automatically. "
-                "Please fix /app/config.json or clear it intentionally before restart."
+                f"Please fix {CONFIG_FILE_PATH} or clear it intentionally before restart."
             )
 
     has_runtime_defaults = all(
@@ -374,7 +376,7 @@ def ensure_docker_config() -> Optional[str]:
     if raw_config and not has_auth_config:
         raise RuntimeError(
             "Config file exists but login credential fields are incomplete. Refusing to regenerate token automatically. "
-            "Please restore secret_key/salt/hashed_token or clear /app/config.json intentionally."
+            f"Please restore secret_key/salt/hashed_token in {CONFIG_FILE_PATH} or clear it intentionally."
         )
 
     runtime_config, token = _build_runtime_config(raw_config)

@@ -5,7 +5,7 @@ import asyncio
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable, Awaitable
 from cookiecutter.exceptions import OutputDirExistsException
 from dotenv import set_key, dotenv_values
 
@@ -635,9 +635,9 @@ def ensure_project_port_is_unique(
 def create_nonebot_project(data: CreateProjectData) -> str:
     project_name = normalize_project_name(data.project_name)
     ensure_project_name_is_unique(project_name)
-    base_project_dir = Path(Config.base_dir) / Path(data.project_dir)
+    project_dir = Path(Config.base_dir) / Path(data.project_dir)
+    base_project_dir = project_dir.parent
     base_project_dir.mkdir(parents=True, exist_ok=True)
-    project_dir = base_project_dir / project_name
     ensure_project_dir_is_unique(project_dir)
     sorted_drivers = sorted(data.drivers, key=_driver_sort_key)
     drivers = [driver.project_link for driver in sorted_drivers]
@@ -1203,6 +1203,114 @@ def _auto_scan_mounted_projects() -> None:
             continue
 
 
+def set_nonebot_project_auto_start(
+    project_id: str, auto_start: bool
+) -> NoneBotProjectMeta:
+    """Persist one project's auto-start preference in project.json."""
+    manager = NoneBotProjectManager(project_id=project_id)
+    data = manager.read()
+    data.auto_start = auto_start
+    manager.store(data)
+    return data
+
+
+def auto_start_enabled_projects() -> List[NoneBotProjectMeta]:
+    """Return persisted auto-start projects that are safe candidates to start."""
+    from nb_cli_plugin_webui.app.process.router import is_project_starting
+
+    result: List[NoneBotProjectMeta] = []
+    for project_id, meta in _get_project_map().items():
+        if not getattr(meta, "auto_start", False):
+            continue
+
+        project_dir = Path(meta.project_dir)
+        if not project_dir.is_dir():
+            log.warning(
+                "Skip auto-start for missing project directory "
+                f"{meta.project_name} (id={project_id}): {meta.project_dir}"
+            )
+            continue
+
+        if _safe_get_project_toml_detail(project_dir) is None:
+            log.warning(
+                "Skip auto-start for invalid project directory "
+                f"{meta.project_name} (id={project_id}): {meta.project_dir}"
+            )
+            continue
+
+        process = ProcessManager.get_process(project_id)
+        if process is not None and process.refresh_runtime_state():
+            log.info(
+                f"Skip auto-start for already running project {meta.project_name} "
+                f"(id={project_id})."
+            )
+            continue
+
+        if is_project_starting(project_id):
+            log.info(
+                f"Skip auto-start for already starting project {meta.project_name} "
+                f"(id={project_id})."
+            )
+            continue
+
+        result.append(meta)
+    return result
+
+
+async def start_auto_start_projects(
+    *,
+    delay_seconds: float = 1.0,
+    runner: Optional[Callable[[NoneBotProjectManager], Awaitable[None]]] = None,
+) -> None:
+    """Start auto-start enabled projects without blocking app startup.
+
+    Each project is isolated: missing directories, already running/starting projects,
+    and start failures are logged and do not stop other enabled projects.
+    """
+    if delay_seconds > 0:
+        await asyncio.sleep(delay_seconds)
+
+    if runner is None:
+        from nb_cli_plugin_webui.app.process.service import run_nonebot_project
+
+        runner = run_nonebot_project
+
+    from nb_cli_plugin_webui.app.process.router import project_run_tasks
+
+    for meta in auto_start_enabled_projects():
+        project_id = meta.project_id
+        running_task = project_run_tasks.get(project_id)
+        if running_task and not running_task.done():
+            log.info(
+                f"Skip auto-start for already starting project {meta.project_name} "
+                f"(id={project_id})."
+            )
+            continue
+
+        async def _run_project(project_meta: NoneBotProjectMeta = meta) -> None:
+            manager = NoneBotProjectManager(project_id=project_meta.project_id)
+            try:
+                await runner(manager)
+                log.info(
+                    "Auto-started NoneBot project "
+                    f"{project_meta.project_name} (id={project_meta.project_id})."
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:
+                log.warning(
+                    "Auto-start failed for NoneBot project "
+                    f"{project_meta.project_name} (id={project_meta.project_id}): {err}"
+                )
+                log.exception(err)
+            finally:
+                project_run_tasks.pop(project_meta.project_id, None)
+
+        task = asyncio.create_task(_run_project())
+        project_run_tasks[project_id] = task
+        await asyncio.sleep(0)
+
+
 def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
     from nb_cli_plugin_webui.app.process.router import is_project_starting
 
@@ -1264,6 +1372,23 @@ def list_nonebot_project() -> Dict[str, NoneBotProjectMeta]:
     return result
 
 
+async def _reset_project_runtime_state_for_dir_change(project_id: str) -> None:
+    process = ProcessManager.get_process(project_id)
+    if process is not None:
+        try:
+            if process.refresh_runtime_state():
+                await process.stop()
+        finally:
+            try:
+                ProcessManager.remove_process(project_id)
+            except KeyError:
+                pass
+
+    from nb_cli_plugin_webui.app.process.service import stop_project_shell_session
+
+    await stop_project_shell_session(project_id)
+
+
 async def update_nonebot_project_dir(project_id: str, new_dir: str) -> str:
     """更新实例的 project_dir 路径。"""
     # 解析新路径，验证其包含有效的 NoneBot 项目
@@ -1271,6 +1396,10 @@ async def update_nonebot_project_dir(project_id: str, new_dir: str) -> str:
 
     # 检查路径唯一性，排除当前项目自身
     ensure_project_dir_is_unique(resolved_dir, exclude_project_id=project_id)
+
+    # 运行进程和维护终端会在创建时缓存 cwd。路径变更后必须丢弃旧对象，
+    # 否则后续启动/终端会继续复用旧目录。
+    await _reset_project_runtime_state_for_dir_change(project_id)
 
     # 读取项目元数据并更新路径
     manager = NoneBotProjectManager(project_id=project_id)

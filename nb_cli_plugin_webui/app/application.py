@@ -1,4 +1,5 @@
 import os
+import asyncio
 from pathlib import Path
 
 from starlette.types import Send, Scope, Receive
@@ -11,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from nb_cli_plugin_webui import get_version
 from nb_cli_plugin_webui.app.backup.service import configure_backup_scheduler
+from nb_cli_plugin_webui.app.project.service import start_auto_start_projects
 from nb_cli_plugin_webui.app.utils.global_log import (
     LOG_CLEANUP_JOB_ID,
     cleanup_old_logs,
@@ -183,6 +185,8 @@ async def startup_event():
     await plugin_store_manager.load_item()
     await adapter_store_manager.load_item()
     await driver_store_manager.load_item()
+
+    asyncio.create_task(start_auto_start_projects())
 
 
 @app.on_event("shutdown")
